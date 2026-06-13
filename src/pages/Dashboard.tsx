@@ -78,12 +78,12 @@ export default function Dashboard() {
         if (eventsError) throw eventsError;
         setRecentEvents(eventsData || []);
 
-        // 3. Fetch last detection event
+        // 3. Fetch last detection event (handle both numeric 1 and text HIGH/MEDIUM)
         const { data: lastDetectData, error: lastDetectError } = await supabase
           .from('water_events')
           .select('*')
           .eq('device_id', userDevice.id)
-          .eq('water_level', 1)
+          .or('water_level.eq.1,water_level.ilike.HIGH,water_level.ilike.MEDIUM')
           .order('detected_at', { ascending: false })
           .limit(1)
           .then((res: any) => res);
@@ -217,6 +217,27 @@ export default function Dashboard() {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Handles both numeric (1) from simulator and text (HIGH/MEDIUM) from ESP32
+  const isWaterDetected = (level: any): boolean => {
+    if (level === 1 || level === '1') return true;
+    if (typeof level === 'string') {
+      const l = level.toUpperCase();
+      return l === 'HIGH' || l === 'MEDIUM';
+    }
+    return false;
+  };
+
+  const getLevelLabel = (level: any): string => {
+    if (typeof level === 'string' && level.trim() !== '') {
+      const l = level.toUpperCase();
+      if (l === 'HIGH')   return 'High (Flow active)';
+      if (l === 'MEDIUM') return 'Medium (Flow active)';
+      if (l === 'LOW')    return 'Low (Dry / Stop)';
+      return level;
+    }
+    return level === 1 ? 'High (Flow active)' : 'Low (Dry / Stop)';
+  };
+
   const telegramDeepLink = `https://t.me/${import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'YourBot'}?start=${profile?.link_token ?? ''}`;
 
   const handleCopyLink = async () => {
@@ -229,7 +250,7 @@ export default function Dashboard() {
     }
   };
 
-  const isWaterAvailable = recentEvents.length > 0 && recentEvents[0].water_level === 1 && device?.status === 'online';
+  const isWaterAvailable = recentEvents.length > 0 && isWaterDetected(recentEvents[0].water_level) && device?.status === 'online';
 
   if (loading) {
     return (
@@ -451,15 +472,15 @@ export default function Dashboard() {
                           {new Date(event.detected_at).toLocaleString()}
                         </td>
                         <td className="py-3 text-gray-400 font-medium">
-                          {event.water_level === 1 ? 'High (Flow active)' : 'Low (Dry / Stop)'}
+                          {getLevelLabel(event.water_level)}
                         </td>
                         <td className="py-3 text-right pr-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            event.water_level === 1 
+                            isWaterDetected(event.water_level)
                               ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15' 
                               : 'bg-slate-800 text-gray-400 border border-slate-700/30'
                           }`}>
-                            {event.water_level === 1 ? 'Water Detected' : 'Stopped'}
+                            {isWaterDetected(event.water_level) ? 'Water Detected' : 'Stopped'}
                           </span>
                         </td>
                       </tr>
