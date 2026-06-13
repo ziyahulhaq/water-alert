@@ -15,10 +15,7 @@ import {
   Cpu,
   Sparkles,
   Send,
-  CheckCircle2,
-  ExternalLink,
-  Copy,
-  Check
+  CheckCircle2
 } from 'lucide-react';
 
 interface Device {
@@ -49,7 +46,6 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [simulatorOpen, setSimulatorOpen] = useState(true);
   const [simulating, setSimulating] = useState(false);
-  const [linkCopied, setLinkCopied] = useState(false);
   const navigate = useNavigate();
 
   const fetchDashboardData = useCallback(async (userId: string) => {
@@ -238,17 +234,6 @@ export default function Dashboard() {
     return level === 1 ? 'High (Flow active)' : 'Low (Dry / Stop)';
   };
 
-  const telegramDeepLink = `https://t.me/${import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'YourBot'}?start=${profile?.link_token ?? ''}`;
-
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(telegramDeepLink);
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2500);
-    } catch {
-      // fallback: select text
-    }
-  };
 
   const isWaterAvailable = recentEvents.length > 0 && isWaterDetected(recentEvents[0].water_level) && device?.status === 'online';
 
