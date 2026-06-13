@@ -51,16 +51,15 @@ export default function Dashboard() {
 
   const fetchDashboardData = useCallback(async (userId: string) => {
     try {
-      // 1. Fetch user's device
-      const { data: deviceData, error: deviceError } = await supabase
-        .from('devices')
-        .select('*')
-        .eq('user_id', userId)
-        .then((res: any) => res);
+      // 1. Get user's devices through user_device junction table
+      const { data: links, error: linkError } = await supabase
+        .from('user_device')
+        .select('device_id, devices(id, model_id, mac_hash, status, last_seen)')
+        .eq('user_id', userId);
 
-      if (deviceError) throw deviceError;
+      if (linkError) throw linkError;
 
-      const userDevice = deviceData && deviceData.length > 0 ? deviceData[0] : null;
+      const userDevice = (links?.[0]?.devices as any) ?? null;
       setDevice(userDevice);
 
       if (userDevice) {
@@ -125,18 +124,19 @@ export default function Dashboard() {
 
     getUserAndData();
 
-    // Setup polling interval to fetch updates every 5 seconds
-    const interval = setInterval(() => {
-      if (user) {
-        fetchDashboardData(user.id);
+    // Poll every 10 s only — stop if error occurs
+    const interval = setInterval(async () => {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser && mounted) {
+        await fetchDashboardData(currentUser.id);
       }
-    }, 5000);
+    }, 10000);
 
     return () => {
       mounted = false;
       clearInterval(interval);
     };
-  }, [user, navigate, fetchDashboardData]);
+  }, [navigate, fetchDashboardData]);
 
   // ESP32 Simulator Controls
   const handleSimulateStatus = async (status: 'online' | 'offline') => {
@@ -502,7 +502,90 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Simulator Panel widget */}
+          {/* Telegram Connect Card */}
+          <div className={`glass-card rounded-2xl p-6 border transition-all ${
+            profile?.chat_id
+              ? 'border-green-500/30 bg-green-950/10'
+              : 'border-blue-500/20'
+          }`}>
+            <div className="flex items-start justify-between flex-wrap gap-6">
+              <div className="flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
+                  profile?.chat_id ? 'bg-green-500/15' : 'bg-blue-500/15'
+                }`}>
+                  {profile?.chat_id ? '✅' : '📱'}
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-0.5">
+                    Telegram Alerts
+                  </p>
+                  {profile?.chat_id ? (
+                    <p className="text-green-400 font-bold text-lg">Connected ✓</p>
+                  ) : (
+                    <p className="text-white font-bold text-lg">Not Connected</p>
+                  )}
+                  <p className="text-gray-500 text-xs mt-0.5">
+                    {profile?.chat_id
+                      ? 'You will receive water supply alerts on Telegram'
+                      : 'Link Telegram to receive instant water alerts'}
+                  </p>
+                </div>
+              </div>
+
+              {profile?.chat_id ? (
+                <span className="inline-flex items-center gap-2 bg-green-500/10 border border-green-500/20 text-green-400 text-sm font-medium px-4 py-2 rounded-xl">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Telegram Linked
+                </span>
+              ) : profile?.link_token ? (
+                <div className="flex flex-col gap-3 w-full md:w-auto">
+                  {/* Step instructions */}
+                  <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4 space-y-3">
+                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider">How to connect:</p>
+                    <div className="flex items-start gap-3">
+                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5">1</span>
+                      <p className="text-gray-300 text-sm">
+                        Open{' '}
+                        <a
+                          href={`https://t.me/${import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'tastTestwaterbot'}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="text-blue-400 underline"
+                        >
+                          @{import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'tastTestwaterbot'}
+                        </a>
+                        {' '}on Telegram
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5">2</span>
+                      <p className="text-gray-300 text-sm">Send this command:</p>
+                    </div>
+                    {/* Code box */}
+                    <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 rounded-lg px-4 py-3">
+                      <code className="text-blue-300 font-mono text-base tracking-widest font-bold flex-1">
+                        /link {profile.link_token.substring(0, 8).toUpperCase()}
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(`/link ${profile!.link_token!.substring(0, 8).toUpperCase()}`);
+                        }}
+                        className="text-xs text-gray-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded transition-all"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <p className="text-gray-600 text-xs">
+                      💡 Tap <strong>Copy</strong>, then paste in Telegram and send
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-red-400">⚠️ No token — run the SQL migration in Supabase first</p>
+              )}
+            </div>
+          </div>
+
+
           <div className="glass-card rounded-2xl border border-blue-500/20 shadow-[0_0_25px_rgba(59,130,246,0.05)] overflow-hidden">
             <button
               onClick={() => setSimulatorOpen(!simulatorOpen)}

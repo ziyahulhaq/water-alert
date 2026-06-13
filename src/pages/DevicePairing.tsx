@@ -6,7 +6,7 @@ import { Cpu, AlertCircle, Camera, CheckCircle2, RefreshCw, QrCode } from 'lucid
 
 export default function DevicePairing() {
   const [user, setUser] = useState<any>(null);
-  const [macId, setMacId] = useState('');
+  const [modelId, setModelId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -67,10 +67,10 @@ export default function DevicePairing() {
     };
   }, [scannerActive, success, user]);
 
-  const handlePairing = async (targetMac: string) => {
-    const cleanMac = targetMac.trim();
-    if (!cleanMac) {
-      setError('Please provide a valid MAC ID');
+  const handlePairing = async (targetId: string) => {
+    const cleanId = targetId.trim().toUpperCase();
+    if (!cleanId) {
+      setError('Please provide a valid Model ID');
       return;
     }
 
@@ -78,41 +78,50 @@ export default function DevicePairing() {
     setLoading(true);
 
     try {
-      // 1. Check if the device is already paired to another user
-      const { data: existingDevices, error: selectError } = await supabase
+      // 1. Find device by model_id (MAC stays hidden)
+      const { data: device, error: findError } = await supabase
         .from('devices')
-        .select('*')
-        .eq('mac_id', cleanMac)
-        .then((res: any) => res);
+        .select('id, model_id')
+        .ilike('model_id', cleanId)
+        .single();
 
-      if (selectError) throw selectError;
-
-      const deviceFound = existingDevices && existingDevices.length > 0 ? existingDevices[0] : null;
-
-      if (deviceFound && deviceFound.user_id && deviceFound.user_id !== user.id) {
-        throw new Error('This device is already paired with another account.');
+      if (findError || !device) {
+        throw new Error(`Device "${cleanId}" not found. Check the Model ID on your device.`);
       }
 
-      // 2. Upsert the device association
-      const { error: upsertError } = await supabase
-        .from('devices')
-        .upsert({
-          ...(deviceFound ? { id: deviceFound.id } : {}),
-          mac_id: cleanMac,
-          user_id: user.id,
-          status: 'online',
-          last_seen: new Date().toISOString()
-        });
+      // 2. Check if already linked to a different web user
+      const { data: existing } = await supabase
+        .from('user_device')
+        .select('id, user_id')
+        .eq('device_id', device.id)
+        .not('user_id', 'is', null)
+        .maybeSingle();
 
-      if (upsertError) throw upsertError;
+      if (existing && existing.user_id !== user.id) {
+        throw new Error('This device is already linked to another account.');
+      }
+
+      // 3. Link device to this web user via user_device
+      const { error: linkError } = await supabase
+        .from('user_device')
+        .upsert(
+          { user_id: user.id, device_id: device.id },
+          { onConflict: 'user_id,device_id' }
+        );
+
+      if (linkError) throw linkError;
+
+      // 4. Update device status/last_seen
+      await supabase.from('devices').update({
+        status:    'online',
+        last_seen: new Date().toISOString(),
+      }).eq('id', device.id);
 
       setSuccess(true);
-      setTimeout(() => {
-        navigate('/notifications');
-      }, 1500);
+      setTimeout(() => navigate('/'), 1500);
     } catch (err: any) {
-      setError(err.message || 'Failed to pair device. Please check the MAC ID.');
-      setScannerActive(true); // Reactivate scanner on error
+      setError(err.message || 'Failed to pair device. Please check the Model ID.');
+      setScannerActive(true);
     } finally {
       setLoading(false);
     }
@@ -120,7 +129,7 @@ export default function DevicePairing() {
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handlePairing(macId);
+    handlePairing(modelId);
   };
 
   const handleResetScanner = () => {
@@ -135,7 +144,7 @@ export default function DevicePairing() {
     <div className="space-y-8 max-w-2xl mx-auto">
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight text-white font-sans">Pair Sensor Device</h1>
-        <p className="text-gray-400 mt-1">Scan the QR code on your ESP32 monitor or type its MAC ID manually.</p>
+        <p className="text-gray-400 mt-1">Scan the QR code on your device or type the *Model ID* printed on the label.</p>
       </div>
 
       {error && (
@@ -203,13 +212,13 @@ export default function DevicePairing() {
 
             <form onSubmit={handleManualSubmit} className="space-y-4">
               <div>
-                <label className="block text-gray-300 text-xs font-semibold uppercase tracking-wider mb-2">Device MAC ID</label>
+                <label className="block text-gray-300 text-xs font-semibold uppercase tracking-wider mb-2">Device Model ID</label>
                 <input
                   type="text"
                   required
-                  value={macId}
-                  onChange={(e) => setMacId(e.target.value)}
-                  placeholder="e.g. ESP32-WATER-001 or 3C:61:05:14:97:8A"
+                  value={modelId}
+                  onChange={(e) => setModelId(e.target.value)}
+                  placeholder="e.g. LKEQCRDZ or 47392810"
                   className="w-full bg-slate-900/50 border border-slate-700/60 rounded-xl py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all text-sm font-mono"
                 />
               </div>
@@ -222,7 +231,7 @@ export default function DevicePairing() {
                 {loading ? (
                   <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                 ) : (
-                  <span>Register Device ID</span>
+                  <span>Link Device</span>
                 )}
               </button>
             </form>
