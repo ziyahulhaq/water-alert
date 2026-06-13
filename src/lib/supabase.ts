@@ -49,6 +49,8 @@ class MockSupabaseClient {
       profiles.push({
         id: newUser.id,
         email: newUser.email,
+        link_token: crypto.randomUUID(),
+        chat_id: null,
         created_at: newUser.created_at
       });
       this.setStorage('mock_profiles', profiles);
@@ -234,6 +236,7 @@ class MockSupabaseClient {
         const upsertItems = Array.isArray(data) ? data : [data];
         // devices table upsert on conflict mac_id
         // notification_settings table upsert on conflict user_id
+        // profiles table upsert on conflict id
         const key = table === 'devices' ? 'mac_id' : (table === 'notification_settings' ? 'user_id' : 'id');
 
         const insertedOrUpdated: any[] = [];
