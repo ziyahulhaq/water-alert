@@ -13,7 +13,10 @@ import {
   ArrowRight,
   TrendingUp,
   Cpu,
-  Sparkles
+  Sparkles,
+  Send,
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 
 interface Device {
@@ -29,11 +32,17 @@ interface WaterEvent {
   water_level: number;
 }
 
+interface Profile {
+  link_token: string | null;
+  chat_id: string | null;
+}
+
 export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
   const [device, setDevice] = useState<Device | null>(null);
   const [recentEvents, setRecentEvents] = useState<WaterEvent[]>([]);
   const [lastDetection, setLastDetection] = useState<string | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [simulatorOpen, setSimulatorOpen] = useState(true);
@@ -42,22 +51,20 @@ export default function Dashboard() {
 
   const fetchDashboardData = useCallback(async (userId: string) => {
     try {
-      // 1. Fetch user's device (supports single device MVP)
+      // 1. Fetch user's device
       const { data: deviceData, error: deviceError } = await supabase
         .from('devices')
         .select('*')
         .eq('user_id', userId)
         .then((res: any) => res);
 
-      if (deviceError) {
-        throw deviceError;
-      }
+      if (deviceError) throw deviceError;
 
       const userDevice = deviceData && deviceData.length > 0 ? deviceData[0] : null;
       setDevice(userDevice);
 
       if (userDevice) {
-        // 2. Fetch recent events for the device
+        // 2. Fetch recent events
         const { data: eventsData, error: eventsError } = await supabase
           .from('water_events')
           .select('*')
@@ -66,12 +73,10 @@ export default function Dashboard() {
           .limit(5)
           .then((res: any) => res);
 
-        if (eventsError) {
-          throw eventsError;
-        }
+        if (eventsError) throw eventsError;
         setRecentEvents(eventsData || []);
 
-        // 3. Fetch last detection event (water_level = 1)
+        // 3. Fetch last detection event
         const { data: lastDetectData, error: lastDetectError } = await supabase
           .from('water_events')
           .select('*')
@@ -81,13 +86,20 @@ export default function Dashboard() {
           .limit(1)
           .then((res: any) => res);
 
-        if (lastDetectError) {
-          throw lastDetectError;
-        }
+        if (lastDetectError) throw lastDetectError;
 
         const lastDetect = lastDetectData && lastDetectData.length > 0 ? lastDetectData[0] : null;
         setLastDetection(lastDetect ? lastDetect.detected_at : null);
       }
+
+      // 4. Fetch Telegram link profile
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('link_token, chat_id')
+        .eq('id', userId)
+        .single();
+      setProfile(profileData ?? null);
+
     } catch (err: any) {
       console.error('Error fetching dashboard data:', err);
       setError(err.message);
@@ -357,6 +369,54 @@ export default function Dashboard() {
                 <span>Seen: {formatRelativeTime(device.last_seen)}</span>
               </div>
             </div>
+          </div>
+
+          {/* Telegram Connect Card */}
+          <div className={`glass-card rounded-2xl p-6 relative overflow-hidden transition-all ${
+            profile?.chat_id
+              ? 'border-emerald-500/20 bg-emerald-950/5'
+              : 'border-blue-500/20 bg-blue-950/5'
+          }`}>
+            <div className="flex justify-between items-start">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  profile?.chat_id
+                    ? 'bg-emerald-500/10 border border-emerald-500/20'
+                    : 'bg-blue-500/10 border border-blue-500/20'
+                }`}>
+                  <Send className={`w-5 h-5 ${ profile?.chat_id ? 'text-emerald-400' : 'text-blue-400' }`} />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Telegram Alerts</p>
+                  <p className={`text-sm font-bold mt-0.5 ${ profile?.chat_id ? 'text-emerald-400' : 'text-white' }`}>
+                    {profile?.chat_id ? 'Connected ✓' : 'Not Connected'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {profile?.chat_id ? (
+              <div className="flex items-center space-x-2 text-emerald-300 text-xs bg-emerald-950/20 border border-emerald-500/10 rounded-xl px-4 py-3">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>Water alerts are being sent to your Telegram</span>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  Connect Telegram to receive instant water supply alerts on your phone.
+                </p>
+                <a
+                  href={`https://t.me/${import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'YourBot'}?start=${profile?.link_token ?? ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center space-x-2 w-full bg-blue-600/15 border border-blue-500/30 hover:bg-blue-600/25 hover:border-blue-500/50 text-blue-300 font-semibold px-4 py-2.5 rounded-xl transition-all text-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Connect Telegram</span>
+                  <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+                </a>
+              </div>
+            )}
           </div>
 
           {/* Middle Section: Last Water Detection */}
