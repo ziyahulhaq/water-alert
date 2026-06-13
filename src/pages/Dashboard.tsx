@@ -14,7 +14,6 @@ import {
   TrendingUp,
   Cpu,
   Sparkles,
-  Send,
   CheckCircle2
 } from 'lucide-react';
 
