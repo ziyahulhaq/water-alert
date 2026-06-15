@@ -187,3 +187,30 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- ============================================================
+--  Push Subscriptions table (Web Push Notifications – Sprint 1)
+-- ============================================================
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  endpoint text not null,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz default now(),
+  unique(user_id, endpoint)  -- prevent duplicate subscriptions per user/browser
+);
+
+alter table public.push_subscriptions enable row level security;
+
+-- Drop existing policies if they exist (to allow reruns)
+drop policy if exists "Users can view own push subscriptions" on public.push_subscriptions;
+drop policy if exists "Users can insert own push subscriptions" on public.push_subscriptions;
+drop policy if exists "Users can delete own push subscriptions" on public.push_subscriptions;
+
+create policy "Users can view own push subscriptions" on public.push_subscriptions
+  for select using (auth.uid() = user_id);
+create policy "Users can insert own push subscriptions" on public.push_subscriptions
+  for insert with check (auth.uid() = user_id);
+create policy "Users can delete own push subscriptions" on public.push_subscriptions
+  for delete using (auth.uid() = user_id);

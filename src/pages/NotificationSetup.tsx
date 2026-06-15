@@ -1,7 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { AlertCircle, CheckCircle2, MessageSquare, Sparkles } from 'lucide-react';
+import {
+  enablePushNotifications,
+  getNotificationStatus,
+  type NotificationStatus,
+} from '../lib/pushNotifications';
+import {
+  AlertCircle,
+  Bell,
+  BellOff,
+  BellRing,
+  CheckCircle2,
+  MessageSquare,
+  ShieldAlert,
+  Sparkles,
+} from 'lucide-react';
 
 export default function NotificationSetup() {
   const [user, setUser] = useState<any>(null);
@@ -11,6 +25,14 @@ export default function NotificationSetup() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Push notification state
+  const [pushStatus, setPushStatus] = useState<NotificationStatus>('disabled');
+  const [pushLoading, setPushLoading] = useState(true);
+  const [pushEnabling, setPushEnabling] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [pushSuccess, setPushSuccess] = useState(false);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -40,11 +62,43 @@ export default function NotificationSetup() {
       } finally {
         setLoading(false);
       }
+
+      // Load push notification status
+      try {
+        const status = await getNotificationStatus();
+        setPushStatus(status);
+      } catch {
+        setPushStatus('disabled');
+      } finally {
+        setPushLoading(false);
+      }
     }
 
     loadSettings();
   }, [navigate]);
 
+  // ─── Push Notifications Handler ────────────────────────────
+  const handleEnablePush = async () => {
+    setPushError(null);
+    setPushSuccess(false);
+    setPushEnabling(true);
+
+    try {
+      await enablePushNotifications();
+      setPushStatus('enabled');
+      setPushSuccess(true);
+      setTimeout(() => setPushSuccess(false), 4000);
+    } catch (err: any) {
+      setPushError(err.message || 'Failed to enable push notifications.');
+      // Re-check status in case permission was denied
+      const status = await getNotificationStatus();
+      setPushStatus(status);
+    } finally {
+      setPushEnabling(false);
+    }
+  };
+
+  // ─── WhatsApp Settings Handler ─────────────────────────────
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -100,12 +154,190 @@ export default function NotificationSetup() {
     );
   }
 
+  // ─── Push Status Badge Rendering ───────────────────────────
+  const renderPushStatusBadge = () => {
+    switch (pushStatus) {
+      case 'enabled':
+        return (
+          <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+            <span>Enabled</span>
+          </span>
+        );
+      case 'denied':
+        return (
+          <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/25">
+            <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
+            <span>Permission Denied</span>
+          </span>
+        );
+      case 'unsupported':
+        return (
+          <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gray-500/15 text-gray-400 border border-gray-500/25">
+            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
+            <span>Not Supported</span>
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/25">
+            <span className="w-1.5 h-1.5 bg-amber-400 rounded-full"></span>
+            <span>Disabled</span>
+          </span>
+        );
+    }
+  };
+
+  const renderPushIcon = () => {
+    switch (pushStatus) {
+      case 'enabled':
+        return <BellRing className="w-5 h-5 text-emerald-400" />;
+      case 'denied':
+        return <ShieldAlert className="w-5 h-5 text-red-400" />;
+      case 'unsupported':
+        return <BellOff className="w-5 h-5 text-gray-500" />;
+      default:
+        return <Bell className="w-5 h-5 text-blue-400" />;
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-xl mx-auto">
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight text-white font-sans text-left">Notification Setup</h1>
-        <p className="text-gray-400 mt-1">Configure alerts to receive water availability updates on WhatsApp.</p>
+        <p className="text-gray-400 mt-1">Configure alerts to receive water availability updates.</p>
       </div>
+
+      {/* ════════════════════════════════════════════════════════
+          PUSH NOTIFICATIONS SECTION
+          ════════════════════════════════════════════════════════ */}
+      <div className="glass-card rounded-2xl p-6 border border-slate-800/80">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-2 text-gray-400">
+            {renderPushIcon()}
+            <span className="text-xs font-semibold uppercase tracking-wider">Push Notifications</span>
+          </div>
+          {!pushLoading && renderPushStatusBadge()}
+        </div>
+
+        {/* Loading skeleton */}
+        {pushLoading && (
+          <div className="flex items-center space-y-3 justify-center py-6">
+            <div className="w-6 h-6 border-3 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+            <span className="text-gray-500 text-xs ml-3">Checking notification status...</span>
+          </div>
+        )}
+
+        {/* Error message */}
+        {pushError && (
+          <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/30 flex items-start space-x-3 text-red-200 text-sm mb-5">
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <span>{pushError}</span>
+          </div>
+        )}
+
+        {/* Success message */}
+        {pushSuccess && (
+          <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex items-start space-x-3 text-emerald-200 text-sm mb-5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+            <span>Push notifications enabled successfully! You'll receive alerts on this device.</span>
+          </div>
+        )}
+
+        {!pushLoading && (
+          <>
+            {/* ── Enabled State ────────────────────────────── */}
+            {pushStatus === 'enabled' && (
+              <div className="flex items-center space-x-4 p-4 bg-emerald-950/20 border border-emerald-500/15 rounded-xl">
+                <div className="p-2.5 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                  <BellRing className="w-5 h-5 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-emerald-300">Notifications Enabled</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    This device is registered to receive push notifications when water supply status changes.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ── Disabled State — Show Enable Button ──────── */}
+            {pushStatus === 'disabled' && (
+              <div className="space-y-4">
+                <div className="flex items-start space-x-4 p-4 bg-slate-900/40 border border-slate-800 rounded-xl">
+                  <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/20 shrink-0">
+                    <Bell className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-200">Get Instant Water Alerts</p>
+                    <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
+                      Enable push notifications to receive real-time alerts on this device when your water supply status changes — even when the app is closed.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  id="enable-push-notifications"
+                  onClick={handleEnablePush}
+                  disabled={pushEnabling}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 px-4 rounded-xl transition-all shadow-lg shadow-blue-600/30 hover:shadow-blue-500/40 flex items-center justify-center space-x-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {pushEnabling ? (
+                    <>
+                      <span className="inline-block w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      <span>Enabling...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="w-4 h-4" />
+                      <span>Enable Notifications</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* ── Permission Denied State ──────────────────── */}
+            {pushStatus === 'denied' && (
+              <div className="flex items-start space-x-4 p-4 bg-red-950/20 border border-red-500/15 rounded-xl">
+                <div className="p-2.5 bg-red-500/10 rounded-xl border border-red-500/20 shrink-0">
+                  <ShieldAlert className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-red-300">Permission Denied</p>
+                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                    Notification permission was blocked for this site. To re-enable:
+                  </p>
+                  <ol className="text-xs text-gray-400 mt-2 space-y-1 list-decimal list-inside">
+                    <li>Click the lock/info icon in the address bar</li>
+                    <li>Find "Notifications" in site permissions</li>
+                    <li>Change from "Block" to "Allow"</li>
+                    <li>Refresh this page and try again</li>
+                  </ol>
+                </div>
+              </div>
+            )}
+
+            {/* ── Unsupported Browser State ────────────────── */}
+            {pushStatus === 'unsupported' && (
+              <div className="flex items-start space-x-4 p-4 bg-slate-900/40 border border-slate-700/30 rounded-xl">
+                <div className="p-2.5 bg-gray-500/10 rounded-xl border border-gray-500/20 shrink-0">
+                  <BellOff className="w-5 h-5 text-gray-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-300">Not Supported</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Your browser does not support push notifications. Please try a modern browser like Chrome, Edge, or Firefox.
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ════════════════════════════════════════════════════════
+          WHATSAPP CONFIGURATION SECTION (existing)
+          ════════════════════════════════════════════════════════ */}
 
       {error && (
         <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/30 flex items-start space-x-3 text-red-200 text-sm">
