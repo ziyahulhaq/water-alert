@@ -120,6 +120,19 @@ class MockSupabaseClient {
       const runQuery = () => {
         let data = client.getStorage<any[]>(`mock_${table}`, []);
         if (filterFn) data = filterFn(data);
+
+        // Resolve mock relations for user_device -> devices join
+        if (table === 'user_device') {
+          const devices = client.getStorage<any[]>('mock_devices', []);
+          data = data.map(item => {
+            const dev = devices.find(d => d.id === item.device_id);
+            return {
+              ...item,
+              devices: dev ? { ...dev } : null
+            };
+          });
+        }
+
         return { data, error: null };
       };
 

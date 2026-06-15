@@ -234,17 +234,7 @@ export default function DevicePairing() {
 
       const deviceId = device.id;
 
-      step = 'check existing link';
-      const { data: existing } = await supabase
-        .from('user_device')
-        .select('id, user_id')
-        .eq('device_id', deviceId)
-        .not('user_id', 'is', null)
-        .maybeSingle();
 
-      if (existing && existing.user_id && existing.user_id !== currentUserId) {
-        throw new Error('This device is already linked to another account.');
-      }
 
       step = 'link device';
       const { error: linkError } = await supabase
