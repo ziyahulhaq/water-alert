@@ -28,6 +28,7 @@ const BLE_CHAR_PASS_UUID  = '12345678-1234-5678-1234-56789abcde02';
 const BLE_CHAR_MAC_UUID   = '12345678-1234-5678-1234-56789abcde03';
 const BLE_CHAR_STATUS_UUID = '12345678-1234-5678-1234-56789abcde04';
 const BLE_CHAR_MODEL_UUID = '12345678-1234-5678-1234-56789abcde05';
+const BLE_CHAR_WIFILIST_UUID = '12345678-1234-5678-1234-56789abcde06';
 
 // ── SHA-256 helper ──────────────────────────────────────────────────────
 async function sha256(text: string): Promise<string> {
@@ -78,6 +79,7 @@ export default function DevicePairing() {
   const [showPassword, setShowPassword] = useState(false);
   const [bleStatus, setBleStatus] = useState<string>('');
   const [bleError, setBleError] = useState<string | null>(null);
+  const [wifiNetworks, setWifiNetworks] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'ble' | 'qr' | 'manual'>(
     isWebBluetoothSupported() ? 'ble' : 'qr'
   );
@@ -329,7 +331,21 @@ export default function DevicePairing() {
         console.warn('[BLE] Model ID characteristic not available.');
       }
 
-      // 5. Get status characteristic for notifications
+      // 5. Read WiFi scan list
+      try {
+        const wifiListChar = await service.getCharacteristic(BLE_CHAR_WIFILIST_UUID);
+        const wifiListValue = await wifiListChar.readValue();
+        const wifiListStr = new TextDecoder().decode(wifiListValue);
+        console.log('[BLE] WiFi networks:', wifiListStr);
+        if (wifiListStr.trim()) {
+          const networks = wifiListStr.split('\n').filter((s: string) => s.trim().length > 0);
+          setWifiNetworks(networks);
+        }
+      } catch {
+        console.warn('[BLE] WiFi list characteristic not available.');
+      }
+
+      // 6. Get status characteristic for notifications
       const statusChar = await service.getCharacteristic(BLE_CHAR_STATUS_UUID);
       bleCharStatusRef.current = statusChar;
 
@@ -341,7 +357,7 @@ export default function DevicePairing() {
         setBleStatus(status);
       });
 
-      // 6. Get write characteristics (keep for later)
+      // 7. Show WiFi form
       setBleStep('wifi-form');
 
     } catch (err: any) {
@@ -633,8 +649,7 @@ export default function DevicePairing() {
                 </div>
                 <div>
                   <p className="text-emerald-300 font-semibold text-sm">Connected: {bleDeviceName}</p>
-                  <p className="text-gray-400 text-xs font-mono mt-0.5">MAC: {bleMac}</p>
-                  {bleModelId && <p className="text-gray-400 text-xs font-mono">Model: {bleModelId}</p>}
+                  {bleModelId && <p className="text-gray-400 text-xs font-mono mt-0.5">Model: {bleModelId}</p>}
                 </div>
               </div>
 
@@ -642,18 +657,48 @@ export default function DevicePairing() {
               <div>
                 <h4 className="text-white font-semibold text-sm mb-3 flex items-center gap-2">
                   <Wifi className="w-4 h-4 text-blue-400" />
-                  Enter Your WiFi Credentials
+                  Select Your WiFi Network
                 </h4>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-gray-300 text-xs font-semibold uppercase tracking-wider mb-1.5">WiFi Network Name (SSID)</label>
-                    <input
-                      type="text"
-                      value={wifiSSID}
-                      onChange={(e) => setWifiSSID(e.target.value)}
-                      placeholder="e.g. MyHomeWiFi"
-                      className="w-full bg-slate-900/50 border border-slate-700/60 rounded-xl py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all text-sm"
-                    />
+                    <label className="block text-gray-300 text-xs font-semibold uppercase tracking-wider mb-1.5">WiFi Network</label>
+                    {wifiNetworks.length > 0 ? (
+                      <>
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                          {wifiNetworks.map((network, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => setWifiSSID(network)}
+                              className={`w-full text-left px-4 py-2.5 rounded-xl border text-sm transition-all flex items-center gap-3 ${
+                                wifiSSID === network
+                                  ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                                  : 'bg-slate-900/50 border-slate-700/40 text-gray-300 hover:border-slate-600 hover:bg-slate-800/50'
+                              }`}
+                            >
+                              <Wifi className={`w-4 h-4 shrink-0 ${wifiSSID === network ? 'text-blue-400' : 'text-gray-500'}`} />
+                              <span className="truncate">{network}</span>
+                              {wifiSSID === network && <CheckCircle2 className="w-4 h-4 text-blue-400 ml-auto shrink-0" />}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-gray-500 text-xs mt-2">Or type manually:</p>
+                        <input
+                          type="text"
+                          value={wifiSSID}
+                          onChange={(e) => setWifiSSID(e.target.value)}
+                          placeholder="Enter SSID manually"
+                          className="w-full mt-1 bg-slate-900/50 border border-slate-700/60 rounded-xl py-2.5 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all text-sm"
+                        />
+                      </>
+                    ) : (
+                      <input
+                        type="text"
+                        value={wifiSSID}
+                        onChange={(e) => setWifiSSID(e.target.value)}
+                        placeholder="e.g. MyHomeWiFi"
+                        className="w-full bg-slate-900/50 border border-slate-700/60 rounded-xl py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all text-sm"
+                      />
+                    )}
                   </div>
                   <div>
                     <label className="block text-gray-300 text-xs font-semibold uppercase tracking-wider mb-1.5">WiFi Password</label>
