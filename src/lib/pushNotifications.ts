@@ -96,10 +96,10 @@ export async function enablePushNotifications(): Promise<PushSubscription> {
   // 5. Create push subscription
   let subscription: PushSubscription;
   try {
-    const applicationServerKey = urlBase64ToArrayBuffer(vapidPublicKey);
+    const vapidKeyBuffer: ArrayBuffer = urlBase64ToArrayBuffer(vapidPublicKey);
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey,
+      applicationServerKey: vapidKeyBuffer,
     });
   } catch (err) {
     throw new Error(`Push subscription creation failed: ${err instanceof Error ? err.message : String(err)}`);
