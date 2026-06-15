@@ -244,17 +244,47 @@ class MockSupabaseClient {
         };
       },
 
-      upsert(data: any) {
+      upsert(data: any, _options?: any) {
         const items = client.getStorage<any[]>(`mock_${table}`, []);
         const upsertItems = Array.isArray(data) ? data : [data];
+
+        // --- Enforce max 2 users per device (mirrors DB trigger) ---
+        if (table === 'user_device') {
+          for (const uItem of upsertItems) {
+            const existing = items.filter(i => i.device_id === uItem.device_id);
+            const alreadyMine = existing.some(i => i.user_id === uItem.user_id);
+            if (existing.length >= 2 && !alreadyMine) {
+              return {
+                select() { return { single() { return Promise.resolve({ data: null, error: { message: 'This device already has the maximum of 2 linked accounts. Remove an existing account first.' } }); }, then(r: any) { r({ data: null, error: { message: 'Max 2 users per device.' } }); } }; },
+                then(resolve: any) { resolve({ data: null, error: { message: 'This device already has the maximum of 2 linked accounts. Remove an existing account first.' } }); }
+              };
+            }
+          }
+        }
+
         // devices table upsert on conflict mac_id
         // notification_settings table upsert on conflict user_id
+        // user_device table upsert on conflict user_id+device_id
         // profiles table upsert on conflict id
-        const key = table === 'devices' ? 'mac_id' : (table === 'notification_settings' ? 'user_id' : 'id');
+        const key = table === 'devices'
+          ? 'mac_id'
+          : table === 'notification_settings'
+            ? 'user_id'
+            : table === 'user_device'
+              ? null  // compound key — handled below
+              : 'id';
 
         const insertedOrUpdated: any[] = [];
         upsertItems.forEach(uItem => {
-          const index = items.findIndex(item => item[key] === uItem[key]);
+          let index = -1;
+          if (table === 'user_device') {
+            index = items.findIndex(item =>
+              item.user_id === uItem.user_id && item.device_id === uItem.device_id
+            );
+          } else if (key) {
+            index = items.findIndex(item => item[key] === uItem[key]);
+          }
+
           if (index !== -1) {
             items[index] = { ...items[index], ...uItem };
             insertedOrUpdated.push(items[index]);

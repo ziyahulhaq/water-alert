@@ -130,6 +130,44 @@ create policy "Users can insert own device links" on public.user_device
 create policy "Users can delete own device links" on public.user_device
   for delete using (auth.uid() = user_id);
 
+-- ============================================================
+--  TRIGGER: Enforce max 2 users per device (database-level)
+--  This runs BEFORE any insert into user_device.
+--  Even if the frontend check is bypassed, the DB will reject
+--  a 3rd link with a clear error message.
+-- ============================================================
+create or replace function public.enforce_max_users_per_device()
+returns trigger as $$
+declare
+  existing_count integer;
+begin
+  -- Count how many users are already linked to this device
+  select count(*) into existing_count
+  from public.user_device
+  where device_id = new.device_id;
+
+  -- Allow if: already linked (this is an upsert re-insert), or count < 2
+  if existing_count >= 2 then
+    -- Check if this user is already one of the linked users
+    if not exists (
+      select 1 from public.user_device
+      where device_id = new.device_id and user_id = new.user_id
+    ) then
+      raise exception 'This device already has the maximum of 2 linked accounts. Remove an existing account first.'
+        using errcode = 'P0001';
+    end if;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+-- Drop old trigger if it exists, then create fresh
+drop trigger if exists trg_enforce_max_users_per_device on public.user_device;
+create trigger trg_enforce_max_users_per_device
+  before insert on public.user_device
+  for each row execute procedure public.enforce_max_users_per_device();
+
 -- Trigger to automatically create a profile and default notification settings upon new auth user registration
 create or replace function public.handle_new_user()
 returns trigger as $$
