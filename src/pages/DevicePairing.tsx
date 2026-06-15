@@ -82,6 +82,7 @@ export default function DevicePairing() {
           { fps: 10, qrbox: { width: 230, height: 230 } },
           async (decodedText) => {
             const scannedValue = decodedText?.trim();
+            console.log('[QR Scanner] Decoded:', JSON.stringify(scannedValue));
             if (!scannedValue) return;
             await stopScanner();
             setScannerReady(false);
@@ -143,69 +144,87 @@ export default function DevicePairing() {
 
   // ── Pairing handler ─────────────────────────────────────────────────────────
   const handlePairing = async (targetId: string) => {
-    const cleanId = targetId.trim().toUpperCase();
-    if (!cleanId) {
-      setError('Please provide a valid Model ID');
-      return;
-    }
-
-    // ALWAYS fetch fresh user from Supabase (avoids stale closure issues)
-    const { data: { user: freshUser } } = await supabase.auth.getUser();
-    if (!freshUser) {
-      setError('You must be logged in to pair a device.');
-      navigate('/login');
-      return;
-    }
-    // Keep state in sync
-    if (!user) setUser(freshUser);
-    const currentUser = freshUser;
-
-    setError(null);
-    setLoading(true);
+    let step = 'init';
     try {
+      const cleanId = targetId.trim().toUpperCase();
+      step = `validate: "${cleanId}"`;
+      if (!cleanId) {
+        setError('Please provide a valid Model ID');
+        return;
+      }
+
+      // ALWAYS fetch fresh user from Supabase (avoids stale closure issues)
+      step = 'auth';
+      const authResult = await supabase.auth.getUser();
+      const freshUser = authResult?.data?.user;
+      if (!freshUser || !freshUser.id) {
+        setError('You must be logged in to pair a device.');
+        navigate('/login');
+        return;
+      }
+      // Keep state in sync
+      if (!user) setUser(freshUser);
+      const currentUserId = freshUser.id;
+
+      setError(null);
+      setLoading(true);
+
       // 1. Find device by model_id (MAC stays hidden)
+      step = `find device: "${cleanId}"`;
       const { data: device, error: findError } = await supabase
         .from('devices')
         .select('id, model_id')
         .ilike('model_id', cleanId)
-        .single();
+        .maybeSingle();
 
-      if (findError || !device || !device.id) {
+      if (findError) {
+        throw new Error(`Database error looking up "${cleanId}": ${findError.message}`);
+      }
+      if (!device || !device.id) {
         throw new Error(`Device "${cleanId}" not found. Check the Model ID on your device.`);
       }
 
+      const deviceId = device.id;
+
       // 2. Check if already linked to a different web user
+      step = 'check existing link';
       const { data: existing } = await supabase
         .from('user_device')
         .select('id, user_id')
-        .eq('device_id', device.id)
+        .eq('device_id', deviceId)
         .not('user_id', 'is', null)
         .maybeSingle();
 
-      if (existing && existing.user_id !== currentUser.id) {
+      if (existing && existing.user_id && existing.user_id !== currentUserId) {
         throw new Error('This device is already linked to another account.');
       }
 
       // 3. Link device to this web user via user_device
+      step = 'link device';
       const { error: linkError } = await supabase
         .from('user_device')
         .upsert(
-          { user_id: currentUser.id, device_id: device.id },
+          { user_id: currentUserId, device_id: deviceId },
           { onConflict: 'user_id,device_id' }
         );
 
-      if (linkError) throw linkError;
+      if (linkError) {
+        throw new Error(`Failed to link: ${linkError.message}`);
+      }
 
       // 4. Update device status/last_seen
+      step = 'update status';
       await supabase.from('devices').update({
         status: 'online',
         last_seen: new Date().toISOString(),
-      }).eq('id', device.id);
+      }).eq('id', deviceId);
 
       setSuccess(true);
       setTimeout(() => navigate('/'), 1500);
     } catch (err: any) {
-      setError(err.message || 'Failed to pair device. Please check the Model ID.');
+      const msg = err?.message || String(err);
+      console.error(`[Pairing] Failed at step "${step}":`, err);
+      setError(`[${step}] ${msg}`);
       // Safely restart scanner after error
       setTimeout(() => {
         setCameras((currentCams) => {
@@ -216,7 +235,7 @@ export default function DevicePairing() {
           });
           return currentCams;
         });
-      }, 300);
+      }, 500);
     } finally {
       setLoading(false);
     }
