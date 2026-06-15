@@ -378,20 +378,20 @@ export default function DevicePairing() {
             <p className="text-xs text-gray-400 leading-relaxed mb-4">
               Don&apos;t have hardware nearby? Scan this QR or type{' '}
               <code className="bg-slate-900 px-1 py-0.5 rounded text-blue-300 font-mono text-[10px]">
-                ESP32-WATER-001
+                WATERDEV1
               </code>{' '}
               to test with the manual input.
             </p>
             <div className="flex items-center space-x-4 bg-slate-900/60 p-3 rounded-xl border border-slate-800/60">
               <img
-                src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=ESP32-WATER-001&color=0-149-255&bgcolor=15-23-42"
-                alt="Test MAC ID QR"
+                src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=WATERDEV1&color=0-149-255&bgcolor=15-23-42"
+                alt="Test Model ID QR"
                 className="w-20 h-20 rounded border border-blue-500/20 bg-slate-950 p-1"
               />
               <div className="text-xs">
-                <p className="text-gray-200 font-semibold">Test MAC ID Payload:</p>
-                <p className="text-blue-400 font-mono mt-1 text-[11px]">ESP32-WATER-001</p>
-                <p className="text-gray-500 text-[10px] mt-1.5">Auto-generates telemetry widgets.</p>
+                <p className="text-gray-200 font-semibold">Test Model ID:</p>
+                <p className="text-blue-400 font-mono mt-1 text-[11px]">WATERDEV1</p>
+                <p className="text-gray-500 text-[10px] mt-1.5">Scan or type this to pair your device.</p>
               </div>
             </div>
           </div>
