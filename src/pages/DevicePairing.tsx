@@ -32,6 +32,9 @@ export default function DevicePairing() {
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
   const isStoppingRef = useRef(false);
 
+  // Ref to always hold the latest handlePairing (avoids stale closure in useCallback)
+  const handlePairingRef = useRef<((targetId: string) => Promise<void>) | undefined>(undefined);
+
   // ── Auth check ──────────────────────────────────────────────────────────────
   useEffect(() => {
     async function checkUser() {
@@ -44,6 +47,14 @@ export default function DevicePairing() {
     }
     checkUser();
   }, [navigate]);
+
+  // ── Safe camera accessor ────────────────────────────────────────────────────
+  const getCameraId = useCallback((cams: CameraDevice[], index: number): string | null => {
+    if (!cams || cams.length === 0) return null;
+    const safeIdx = Math.min(index, cams.length - 1);
+    const cam = cams[safeIdx];
+    return cam?.id ?? null;
+  }, []);
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
   const stopScanner = useCallback(async () => {
@@ -63,18 +74,21 @@ export default function DevicePairing() {
 
   const startScanner = useCallback(
     async (cameraId: string) => {
-      if (!html5QrcodeRef.current) return;
+      if (!html5QrcodeRef.current || !cameraId) return;
       setCameraError(null);
       try {
         await html5QrcodeRef.current.start(
           { deviceId: { exact: cameraId } },
           { fps: 10, qrbox: { width: 230, height: 230 } },
           async (decodedText) => {
-            const scannedMac = decodedText.trim();
-            if (!scannedMac) return;
+            const scannedValue = decodedText?.trim();
+            if (!scannedValue) return;
             await stopScanner();
             setScannerReady(false);
-            await handlePairing(scannedMac);
+            // Use ref to get the LATEST handlePairing (not a stale closure)
+            if (handlePairingRef.current) {
+              await handlePairingRef.current(scannedValue);
+            }
           },
           () => { /* ignore per-frame failures */ }
         );
@@ -84,7 +98,7 @@ export default function DevicePairing() {
         setScannerRunning(false);
       }
     },
-    [stopScanner] // handlePairing is stable (no deps); declared below
+    [stopScanner]
   );
 
   // ── Initialise cameras on mount ──────────────────────────────────────────────
@@ -108,7 +122,13 @@ export default function DevicePairing() {
         );
         const preferred = backIdx >= 0 ? backIdx : 0;
         setActiveCameraIndex(preferred);
-        startScanner(devices[preferred].id);
+
+        const camId = devices[preferred]?.id;
+        if (camId) {
+          startScanner(camId);
+        } else {
+          setCameraError('Selected camera has no valid ID.');
+        }
       })
       .catch((err) => {
         setCameraError(err?.message ?? 'Camera permission denied.');
@@ -121,6 +141,7 @@ export default function DevicePairing() {
     };
   }, [user]); // startScanner/stopScanner are stable refs
 
+  // ── Pairing handler ─────────────────────────────────────────────────────────
   const handlePairing = async (targetId: string) => {
     const cleanId = targetId.trim().toUpperCase();
     if (!cleanId) {
@@ -128,18 +149,16 @@ export default function DevicePairing() {
       return;
     }
 
-    // Ensure we have an authenticated user
-    let currentUser = user;
-    if (!currentUser) {
-      const { data: { user: freshUser } } = await supabase.auth.getUser();
-      if (!freshUser) {
-        setError('You must be logged in to pair a device.');
-        navigate('/login');
-        return;
-      }
-      currentUser = freshUser;
-      setUser(currentUser);
+    // ALWAYS fetch fresh user from Supabase (avoids stale closure issues)
+    const { data: { user: freshUser } } = await supabase.auth.getUser();
+    if (!freshUser) {
+      setError('You must be logged in to pair a device.');
+      navigate('/login');
+      return;
     }
+    // Keep state in sync
+    if (!user) setUser(freshUser);
+    const currentUser = freshUser;
 
     setError(null);
     setLoading(true);
@@ -151,7 +170,7 @@ export default function DevicePairing() {
         .ilike('model_id', cleanId)
         .single();
 
-      if (findError || !device) {
+      if (findError || !device || !device.id) {
         throw new Error(`Device "${cleanId}" not found. Check the Model ID on your device.`);
       }
 
@@ -187,13 +206,24 @@ export default function DevicePairing() {
       setTimeout(() => navigate('/'), 1500);
     } catch (err: any) {
       setError(err.message || 'Failed to pair device. Please check the Model ID.');
+      // Safely restart scanner after error
       setTimeout(() => {
-        if (cameras.length > 0) startScanner(cameras[activeCameraIndex].id);
+        setCameras((currentCams) => {
+          setActiveCameraIndex((currentIdx) => {
+            const camId = getCameraId(currentCams, currentIdx);
+            if (camId) startScanner(camId);
+            return currentIdx;
+          });
+          return currentCams;
+        });
       }, 300);
     } finally {
       setLoading(false);
     }
   };
+
+  // Keep the ref in sync so the QR callback always calls the latest version
+  handlePairingRef.current = handlePairing;
 
   // ── Switch camera ──────────────────────────────────────────────────────────
   const handleSwitchCamera = async () => {
@@ -201,7 +231,10 @@ export default function DevicePairing() {
     await stopScanner();
     const nextIndex = (activeCameraIndex + 1) % cameras.length;
     setActiveCameraIndex(nextIndex);
-    setTimeout(() => startScanner(cameras[nextIndex].id), 200);
+    const camId = getCameraId(cameras, nextIndex);
+    if (camId) {
+      setTimeout(() => startScanner(camId), 200);
+    }
   };
 
   // ── Restart scanner ────────────────────────────────────────────────────────
@@ -210,7 +243,10 @@ export default function DevicePairing() {
     setError(null);
     setCameraError(null);
     await stopScanner();
-    setTimeout(() => startScanner(cameras[activeCameraIndex].id), 200);
+    const camId = getCameraId(cameras, activeCameraIndex);
+    if (camId) {
+      setTimeout(() => startScanner(camId), 200);
+    }
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {
@@ -220,12 +256,13 @@ export default function DevicePairing() {
 
   // ── Camera label helpers ──────────────────────────────────────────────────────
   const cameraLabel = (cam: CameraDevice) => {
-    const label = cam.label || '';
+    const label = cam?.label || '';
     if (/back|rear|environment/i.test(label)) return 'Back Camera';
     if (/front|user|face/i.test(label)) return 'Front Camera';
     return label || 'Camera';
   };
 
+  const activeCam = cameras[activeCameraIndex];
   const nextCameraLabel = cameras.length >= 2
     ? cameraLabel(cameras[(activeCameraIndex + 1) % cameras.length])
     : null;
@@ -271,10 +308,10 @@ export default function DevicePairing() {
             </div>
 
             {/* Camera badge */}
-            {cameras.length > 0 && (
+            {activeCam && (
               <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-blue-300 bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded-full">
                 <FlipHorizontal2 className="w-3 h-3" />
-                {cameraLabel(cameras[activeCameraIndex])}
+                {cameraLabel(activeCam)}
               </span>
             )}
           </div>
