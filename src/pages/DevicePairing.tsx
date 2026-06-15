@@ -234,7 +234,19 @@ export default function DevicePairing() {
 
       const deviceId = device.id;
 
+      step = 'check linked accounts count';
+      const { data: existingLinks, error: countError } = await supabase
+        .from('user_device')
+        .select('user_id')
+        .eq('device_id', deviceId);
 
+      if (countError) throw new Error(`Failed to check existing links: ${countError.message}`);
+      
+      const linkedUsers = existingLinks || [];
+      const isLinkedToMe = linkedUsers.some((link: any) => link.user_id === currentUserId);
+      if (linkedUsers.length >= 2 && !isLinkedToMe) {
+        throw new Error('This device is already linked to the maximum number of accounts (2).');
+      }
 
       step = 'link device';
       const { error: linkError } = await supabase
@@ -444,6 +456,21 @@ export default function DevicePairing() {
 
       if (upsertError) throw new Error(`Device save failed: ${upsertError.message}`);
       if (!upsertedDevice?.id) throw new Error('Failed to get device ID after save.');
+
+      // Check active links count
+      const { data: bleLinks, error: bleCountError } = await supabase
+        .from('user_device')
+        .select('user_id')
+        .eq('device_id', upsertedDevice.id);
+
+      if (bleCountError) throw new Error(`Link check failed: ${bleCountError.message}`);
+
+      const bleLinkedUsers = bleLinks || [];
+      const isBleAlreadyLinkedToMe = bleLinkedUsers.some((link: any) => link.user_id === freshUser.id);
+
+      if (bleLinkedUsers.length >= 2 && !isBleAlreadyLinkedToMe) {
+        throw new Error('This device is already linked to the maximum number of accounts (2).');
+      }
 
       // Link to user
       const { error: linkError } = await supabase
