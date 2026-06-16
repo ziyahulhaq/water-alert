@@ -822,7 +822,7 @@ export default function Dashboard() {
                     hint: 'Sensor reads ≤ this → Water gone, reset alert',
                     min: 0, max: 500,
                   },
-                ] as const).map(({ key, label, sublabel, color, badge, badgeColor, hint, min, max }) => (
+                ] as const).map(({ key, label, sublabel, badge, badgeColor, hint, min, max }) => (
                   <div key={key} className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 space-y-3">
                     {/* Title row */}
                     <div className="flex items-start justify-between gap-2">
