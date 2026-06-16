@@ -245,7 +245,64 @@ export default function Dashboard() {
   };
 
   const setThreshField = (key: keyof typeof thresh, val: number) => {
-    setThresh(prev => ({ ...prev, [key]: val }));
+    setThresh(prev => {
+      const next = { ...prev, [key]: val };
+
+      // Auto-enforce ordering rules:
+      // no_water < low < medium
+      // alert >= low + 1
+      // reset <= no_water
+
+      if (key === 'threshold_no_water_max') {
+        // Low must be above no-water
+        if (next.threshold_low_max <= next.threshold_no_water_max)
+          next.threshold_low_max = next.threshold_no_water_max + 1;
+        // Medium must be above low
+        if (next.threshold_medium_max <= next.threshold_low_max)
+          next.threshold_medium_max = next.threshold_low_max + 1;
+        // Alert must be above low
+        if (next.alert_threshold <= next.threshold_low_max)
+          next.alert_threshold = next.threshold_low_max + 1;
+        // Reset must stay <= no-water
+        if (next.reset_threshold > next.threshold_no_water_max)
+          next.reset_threshold = next.threshold_no_water_max;
+      }
+
+      if (key === 'threshold_low_max') {
+        // No-water must stay below low
+        if (next.threshold_no_water_max >= next.threshold_low_max)
+          next.threshold_no_water_max = next.threshold_low_max - 1;
+        // Medium must be above low
+        if (next.threshold_medium_max <= next.threshold_low_max)
+          next.threshold_medium_max = next.threshold_low_max + 1;
+        // Alert must be at least low + 1
+        if (next.alert_threshold <= next.threshold_low_max)
+          next.alert_threshold = next.threshold_low_max + 1;
+      }
+
+      if (key === 'threshold_medium_max') {
+        // Low must stay below medium
+        if (next.threshold_low_max >= next.threshold_medium_max)
+          next.threshold_low_max = next.threshold_medium_max - 1;
+        // Alert must be above low (already enforced above)
+        if (next.alert_threshold <= next.threshold_low_max)
+          next.alert_threshold = next.threshold_low_max + 1;
+      }
+
+      if (key === 'alert_threshold') {
+        // Can't go below low_max + 1 — clamp it
+        if (next.alert_threshold <= next.threshold_low_max)
+          next.alert_threshold = next.threshold_low_max + 1;
+      }
+
+      if (key === 'reset_threshold') {
+        // Reset can't exceed no-water max
+        if (next.reset_threshold > next.threshold_no_water_max)
+          next.reset_threshold = next.threshold_no_water_max;
+      }
+
+      return next;
+    });
   };
 
   const formatRelativeTime = (dateString: string | null) => {
@@ -746,14 +803,14 @@ export default function Dashboard() {
                     min: 100, max: 3000,
                   },
                   {
-                    key: 'alert_threshold',
+                    key: 'alert_threshold' as const,
                     label: '🚰  Send Alert From',
                     sublabel: 'Water has arrived — notify me!',
                     color: 'emerald',
                     badge: 'ALERT',
                     badgeColor: 'emerald',
-                    hint: 'Sensor reads ≥ this → Send water alert',
-                    min: 50, max: 3000,
+                    hint: `Must be above Low Water (${thresh.threshold_low_max})`,
+                    min: thresh.threshold_low_max + 1, max: 3000,
                   },
                   {
                     key: 'reset_threshold',
