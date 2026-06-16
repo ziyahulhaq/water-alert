@@ -1,15 +1,15 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { 
-  Droplet, 
-  DropletOff, 
-  Activity, 
-  Clock, 
-  AlertCircle, 
-  Wifi, 
-  WifiOff, 
-  Plus, 
+import {
+  Droplet,
+  DropletOff,
+  Activity,
+  Clock,
+  AlertCircle,
+  Wifi,
+  WifiOff,
+  Plus,
   ArrowRight,
   TrendingUp,
   Cpu,
@@ -55,11 +55,11 @@ export default function Dashboard() {
   const [threshSaving, setThreshSaving] = useState(false);
   const [threshSaved, setThreshSaved] = useState(false);
   const [thresh, setThresh] = useState({
-    threshold_no_water_max:  150,
-    threshold_low_max:       600,
-    threshold_medium_max:   1200,
-    alert_threshold:         601,
-    reset_threshold:         150,
+    threshold_no_water_max: 150,
+    threshold_low_max: 600,
+    threshold_medium_max: 1200,
+    alert_threshold: 601,
+    reset_threshold: 150,
   });
   const navigate = useNavigate();
 
@@ -80,10 +80,10 @@ export default function Dashboard() {
       if (userDevice) {
         setThresh({
           threshold_no_water_max: userDevice.threshold_no_water_max ?? 150,
-          threshold_low_max:      userDevice.threshold_low_max      ?? 600,
-          threshold_medium_max:   userDevice.threshold_medium_max   ?? 1200,
-          alert_threshold:        userDevice.alert_threshold         ?? 601,
-          reset_threshold:        userDevice.reset_threshold         ?? 150,
+          threshold_low_max: userDevice.threshold_low_max ?? 600,
+          threshold_medium_max: userDevice.threshold_medium_max ?? 1200,
+          alert_threshold: userDevice.alert_threshold ?? 601,
+          reset_threshold: userDevice.reset_threshold ?? 150,
         });
       }
 
@@ -209,7 +209,7 @@ export default function Dashboard() {
         .select('*')
         .eq('user_id', user.id)
         .single();
-      
+
       if (settings?.enabled && settings?.whatsapp_number) {
         console.log(
           `%c[WhatsApp Simulation] SMS alert sent to ${settings.whatsapp_number}: Water supply is now ${waterLevel === 1 ? 'AVAILABLE ✅' : 'NOT AVAILABLE ❌'}`,
@@ -332,9 +332,9 @@ export default function Dashboard() {
   const getLevelLabel = (level: any): string => {
     if (typeof level === 'string' && level.trim() !== '') {
       const l = level.toUpperCase();
-      if (l === 'HIGH')   return 'High (Flow active)';
+      if (l === 'HIGH') return 'High (Flow active)';
       if (l === 'MEDIUM') return 'Medium (Flow active)';
-      if (l === 'LOW')    return 'Low (Dry / Stop)';
+      if (l === 'LOW') return 'Low (Dry / Stop)';
       return level;
     }
     return level === 1 ? 'High (Flow active)' : 'Low (Dry / Stop)';
@@ -406,11 +406,10 @@ export default function Dashboard() {
           {/* Top Section: Status Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Water Supply Status Card */}
-            <div className={`glass-card rounded-2xl p-6 relative overflow-hidden transition-all ${
-              isWaterAvailable 
-                ? 'border-emerald-500/30 bg-emerald-950/10 shadow-[0_0_20px_rgba(16,185,129,0.05)] animate-glow-green' 
+            <div className={`glass-card rounded-2xl p-6 relative overflow-hidden transition-all ${isWaterAvailable
+                ? 'border-emerald-500/30 bg-emerald-950/10 shadow-[0_0_20px_rgba(16,185,129,0.05)] animate-glow-green'
                 : 'border-slate-800/80'
-            }`}>
+              }`}>
               <div className="flex justify-between items-start">
                 <div>
                   <span className="text-gray-400 text-xs font-semibold uppercase tracking-wider">Water Availability</span>
@@ -426,11 +425,10 @@ export default function Dashboard() {
                     )}
                   </h2>
                 </div>
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                  isWaterAvailable 
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isWaterAvailable
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                     : 'bg-slate-900/60 text-slate-500 border border-slate-800'
-                }`}>
+                  }`}>
                   {isWaterAvailable ? (
                     <Droplet className="w-6 h-6 fill-emerald-500/20" />
                   ) : (
@@ -440,18 +438,16 @@ export default function Dashboard() {
               </div>
               <div className="mt-6 flex items-center text-xs text-gray-400">
                 <span className="flex h-2 w-2 relative mr-2">
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                    isWaterAvailable ? 'bg-emerald-400' : 'bg-slate-500'
-                  }`}></span>
-                  <span className={`relative inline-flex rounded-full h-2 w-2 ${
-                    isWaterAvailable ? 'bg-emerald-500' : 'bg-slate-500'
-                  }`}></span>
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isWaterAvailable ? 'bg-emerald-400' : 'bg-slate-500'
+                    }`}></span>
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${isWaterAvailable ? 'bg-emerald-500' : 'bg-slate-500'
+                    }`}></span>
                 </span>
                 <span>
-                  {device.status === 'offline' 
-                    ? 'Device offline (Status frozen)' 
-                    : isWaterAvailable 
-                      ? 'Water sensor currently detecting supply flow' 
+                  {device.status === 'offline'
+                    ? 'Device offline (Status frozen)'
+                    : isWaterAvailable
+                      ? 'Water sensor currently detecting supply flow'
                       : 'No water supply flow detected'
                   }
                 </span>
@@ -459,11 +455,10 @@ export default function Dashboard() {
             </div>
 
             {/* Device Status Card */}
-            <div className={`glass-card rounded-2xl p-6 relative overflow-hidden transition-all ${
-              device.status === 'online' 
-                ? 'border-blue-500/30 bg-blue-950/10 shadow-[0_0_20px_rgba(59,130,246,0.05)] animate-glow-blue' 
+            <div className={`glass-card rounded-2xl p-6 relative overflow-hidden transition-all ${device.status === 'online'
+                ? 'border-blue-500/30 bg-blue-950/10 shadow-[0_0_20px_rgba(59,130,246,0.05)] animate-glow-blue'
                 : 'border-slate-800/80'
-            }`}>
+              }`}>
               <div className="flex justify-between items-start">
                 <div>
                   <span className="text-gray-400 text-xs font-semibold uppercase tracking-wider">Device Status</span>
@@ -479,11 +474,10 @@ export default function Dashboard() {
                     )}
                   </h2>
                 </div>
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                  device.status === 'online' 
-                    ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${device.status === 'online'
+                    ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
                     : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                }`}>
+                  }`}>
                   {device.status === 'online' ? (
                     <Wifi className="w-6 h-6" />
                   ) : (
@@ -503,7 +497,7 @@ export default function Dashboard() {
           <div className="glass-card rounded-2xl p-6 border border-slate-800/80">
             <div className="flex items-center space-x-3 text-gray-400 mb-4">
               <Clock className="w-5 h-5 text-blue-400" />
-              <span className="text-xs font-semibold uppercase tracking-wider">Last Water Detection</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">Last qWater Detection</span>
             </div>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
@@ -566,11 +560,10 @@ export default function Dashboard() {
                           {getLevelLabel(event.water_level)}
                         </td>
                         <td className="py-3 text-right pr-2">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            isWaterDetected(event.water_level)
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15' 
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isWaterDetected(event.water_level)
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'
                               : 'bg-slate-800 text-gray-400 border border-slate-700/30'
-                          }`}>
+                            }`}>
                             {isWaterDetected(event.water_level) ? 'Water Detected' : 'Stopped'}
                           </span>
                         </td>
@@ -583,16 +576,14 @@ export default function Dashboard() {
           </div>
 
           {/* Telegram Connect Card */}
-          <div className={`glass-card rounded-2xl p-6 border transition-all ${
-            profile?.chat_id
+          <div className={`glass-card rounded-2xl p-6 border transition-all ${profile?.chat_id
               ? 'border-green-500/30 bg-green-950/10'
               : 'border-blue-500/20'
-          }`}>
+            }`}>
             <div className="flex items-start justify-between flex-wrap gap-6">
               <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${
-                  profile?.chat_id ? 'bg-green-500/15' : 'bg-blue-500/15'
-                }`}>
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl ${profile?.chat_id ? 'bg-green-500/15' : 'bg-blue-500/15'
+                  }`}>
                   {profile?.chat_id ? '✅' : '📱'}
                 </div>
                 <div>
@@ -686,7 +677,7 @@ export default function Dashboard() {
             {simulatorOpen && (
               <div className="p-6 bg-slate-950/40 space-y-6">
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Use these controls to simulate the hardware ESP32 device sending data packets to your Supabase tables. 
+                  Use these controls to simulate the hardware ESP32 device sending data packets to your Supabase tables.
                   Simulated WhatsApp notification SMS will trigger output in the browser console.
                 </p>
 
