@@ -407,8 +407,8 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Water Supply Status Card */}
             <div className={`glass-card rounded-2xl p-6 relative overflow-hidden transition-all ${isWaterAvailable
-                ? 'border-emerald-500/30 bg-emerald-950/10 shadow-[0_0_20px_rgba(16,185,129,0.05)] animate-glow-green'
-                : 'border-slate-800/80'
+              ? 'border-emerald-500/30 bg-emerald-950/10 shadow-[0_0_20px_rgba(16,185,129,0.05)] animate-glow-green'
+              : 'border-slate-800/80'
               }`}>
               <div className="flex justify-between items-start">
                 <div>
@@ -426,8 +426,8 @@ export default function Dashboard() {
                   </h2>
                 </div>
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isWaterAvailable
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    : 'bg-slate-900/60 text-slate-500 border border-slate-800'
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  : 'bg-slate-900/60 text-slate-500 border border-slate-800'
                   }`}>
                   {isWaterAvailable ? (
                     <Droplet className="w-6 h-6 fill-emerald-500/20" />
@@ -456,8 +456,8 @@ export default function Dashboard() {
 
             {/* Device Status Card */}
             <div className={`glass-card rounded-2xl p-6 relative overflow-hidden transition-all ${device.status === 'online'
-                ? 'border-blue-500/30 bg-blue-950/10 shadow-[0_0_20px_rgba(59,130,246,0.05)] animate-glow-blue'
-                : 'border-slate-800/80'
+              ? 'border-blue-500/30 bg-blue-950/10 shadow-[0_0_20px_rgba(59,130,246,0.05)] animate-glow-blue'
+              : 'border-slate-800/80'
               }`}>
               <div className="flex justify-between items-start">
                 <div>
@@ -475,8 +475,8 @@ export default function Dashboard() {
                   </h2>
                 </div>
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${device.status === 'online'
-                    ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                  : 'bg-red-500/10 text-red-400 border border-red-500/20'
                   }`}>
                   {device.status === 'online' ? (
                     <Wifi className="w-6 h-6" />
@@ -497,7 +497,7 @@ export default function Dashboard() {
           <div className="glass-card rounded-2xl p-6 border border-slate-800/80">
             <div className="flex items-center space-x-3 text-gray-400 mb-4">
               <Clock className="w-5 h-5 text-blue-400" />
-              <span className="text-xs font-semibold uppercase tracking-wider">Last qWater Detection</span>
+              <span className="text-xs font-semibold uppercase tracking-wider">Last Water Detection</span>
             </div>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
@@ -561,8 +561,8 @@ export default function Dashboard() {
                         </td>
                         <td className="py-3 text-right pr-2">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isWaterDetected(event.water_level)
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'
-                              : 'bg-slate-800 text-gray-400 border border-slate-700/30'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'
+                            : 'bg-slate-800 text-gray-400 border border-slate-700/30'
                             }`}>
                             {isWaterDetected(event.water_level) ? 'Water Detected' : 'Stopped'}
                           </span>
@@ -577,8 +577,8 @@ export default function Dashboard() {
 
           {/* Telegram Connect Card */}
           <div className={`glass-card rounded-2xl p-6 border transition-all ${profile?.chat_id
-              ? 'border-green-500/30 bg-green-950/10'
-              : 'border-blue-500/20'
+            ? 'border-green-500/30 bg-green-950/10'
+            : 'border-blue-500/20'
             }`}>
             <div className="flex items-start justify-between flex-wrap gap-6">
               <div className="flex items-center gap-4">
