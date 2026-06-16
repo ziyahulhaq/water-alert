@@ -22,6 +22,11 @@ interface Device {
   mac_id: string;
   status: string;
   last_seen: string | null;
+  threshold_no_water_max?: number;
+  threshold_low_max?: number;
+  threshold_medium_max?: number;
+  alert_threshold?: number;
+  reset_threshold?: number;
 }
 
 interface WaterEvent {
@@ -45,6 +50,17 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [simulatorOpen, setSimulatorOpen] = useState(true);
   const [simulating, setSimulating] = useState(false);
+  // Threshold settings state
+  const [threshOpen, setThreshOpen] = useState(false);
+  const [threshSaving, setThreshSaving] = useState(false);
+  const [threshSaved, setThreshSaved] = useState(false);
+  const [thresh, setThresh] = useState({
+    threshold_no_water_max:  150,
+    threshold_low_max:       600,
+    threshold_medium_max:   1200,
+    alert_threshold:         601,
+    reset_threshold:         150,
+  });
   const navigate = useNavigate();
 
   const fetchDashboardData = useCallback(async (userId: string) => {
@@ -52,13 +68,24 @@ export default function Dashboard() {
       // 1. Get user's devices through user_device junction table
       const { data: links, error: linkError } = await supabase
         .from('user_device')
-        .select('device_id, devices(id, model_id, mac_hash, status, last_seen)')
+        .select('device_id, devices(id, model_id, mac_hash, status, last_seen, threshold_no_water_max, threshold_low_max, threshold_medium_max, alert_threshold, reset_threshold)')
         .eq('user_id', userId);
 
       if (linkError) throw linkError;
 
       const userDevice = (links?.[0]?.devices as any) ?? null;
       setDevice(userDevice);
+
+      // Sync threshold sliders with DB values whenever device data loads
+      if (userDevice) {
+        setThresh({
+          threshold_no_water_max: userDevice.threshold_no_water_max ?? 150,
+          threshold_low_max:      userDevice.threshold_low_max      ?? 600,
+          threshold_medium_max:   userDevice.threshold_medium_max   ?? 1200,
+          alert_threshold:        userDevice.alert_threshold         ?? 601,
+          reset_threshold:        userDevice.reset_threshold         ?? 150,
+        });
+      }
 
       if (userDevice) {
         // 2. Fetch recent events
@@ -196,6 +223,29 @@ export default function Dashboard() {
     } finally {
       setSimulating(false);
     }
+  };
+
+  const handleSaveThresholds = async () => {
+    if (!device) return;
+    setThreshSaving(true);
+    setThreshSaved(false);
+    try {
+      const { error: updateError } = await supabase
+        .from('devices')
+        .update(thresh)
+        .eq('id', device.id);
+      if (updateError) throw updateError;
+      setThreshSaved(true);
+      setTimeout(() => setThreshSaved(false), 3000);
+    } catch (err: any) {
+      alert('Failed to save thresholds: ' + err.message);
+    } finally {
+      setThreshSaving(false);
+    }
+  };
+
+  const setThreshField = (key: keyof typeof thresh, val: number) => {
+    setThresh(prev => ({ ...prev, [key]: val }));
   };
 
   const formatRelativeTime = (dateString: string | null) => {
@@ -631,6 +681,174 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* ── Water Level Settings ── */}
+      {device && (
+        <div className="rounded-2xl border border-slate-800/60 bg-slate-900/50 backdrop-blur-sm overflow-hidden">
+          {/* Header */}
+          <button
+            onClick={() => setThreshOpen(o => !o)}
+            className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-800/30 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+                <Droplet className="w-4 h-4 text-cyan-400" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-white">Water Level Settings</p>
+                <p className="text-xs text-gray-500">Set when water is detected — restart device to apply</p>
+              </div>
+            </div>
+            <span className="text-gray-500 text-xs">{threshOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {threshOpen && (
+            <div className="px-6 pb-6 space-y-5">
+              {/* Info banner */}
+              <div className="flex items-start gap-2 bg-cyan-500/8 border border-cyan-500/20 rounded-xl p-3">
+                <AlertCircle className="w-4 h-4 text-cyan-400 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-cyan-300/80 leading-relaxed">
+                  Save your settings here, then <strong className="text-cyan-300">turn the device OFF and ON</strong> to apply the new water levels.
+                </p>
+              </div>
+
+              {/* Threshold inputs grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {([
+                  {
+                    key: 'threshold_no_water_max',
+                    label: '🪣  No Water',
+                    sublabel: 'Pipe is completely dry',
+                    color: 'slate',
+                    badge: 'DRY',
+                    badgeColor: 'slate',
+                    hint: 'Sensor reads ≤ this → No water in pipe',
+                    min: 0, max: 800,
+                  },
+                  {
+                    key: 'threshold_low_max',
+                    label: '💧  Low Water',
+                    sublabel: 'A small amount is flowing',
+                    color: 'blue',
+                    badge: 'LOW',
+                    badgeColor: 'blue',
+                    hint: 'Sensor reads ≤ this → Low water (no alert)',
+                    min: 50, max: 1500,
+                  },
+                  {
+                    key: 'threshold_medium_max',
+                    label: '🌊  Medium Water',
+                    sublabel: 'Good flow, but not full',
+                    color: 'cyan',
+                    badge: 'MEDIUM',
+                    badgeColor: 'cyan',
+                    hint: 'Sensor reads ≤ this → Medium water',
+                    min: 100, max: 3000,
+                  },
+                  {
+                    key: 'alert_threshold',
+                    label: '🚰  Send Alert From',
+                    sublabel: 'Water has arrived — notify me!',
+                    color: 'emerald',
+                    badge: 'ALERT',
+                    badgeColor: 'emerald',
+                    hint: 'Sensor reads ≥ this → Send water alert',
+                    min: 50, max: 3000,
+                  },
+                  {
+                    key: 'reset_threshold',
+                    label: '🔄  Water Stopped',
+                    sublabel: 'Supply has cut off — reset',
+                    color: 'rose',
+                    badge: 'RESET',
+                    badgeColor: 'rose',
+                    hint: 'Sensor reads ≤ this → Water gone, reset alert',
+                    min: 0, max: 500,
+                  },
+                ] as const).map(({ key, label, sublabel, color, badge, badgeColor, hint, min, max }) => (
+                  <div key={key} className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-4 space-y-3">
+                    {/* Title row */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{label}</p>
+                        <p className="text-[11px] text-gray-500 mt-0.5">{sublabel}</p>
+                      </div>
+                      <span className={`shrink-0 text-[9px] font-bold tracking-widest px-2 py-0.5 rounded-full border bg-${badgeColor}-500/10 border-${badgeColor}-500/30 text-${badgeColor}-400`}>
+                        {badge}
+                      </span>
+                    </div>
+
+                    {/* Slider */}
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      value={thresh[key]}
+                      onChange={e => setThreshField(key, Number(e.target.value))}
+                      className="w-full h-1.5 rounded-full accent-cyan-400 cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[10px] text-gray-600">
+                      <span>{min}</span>
+                      <span className="text-gray-500 text-center truncate px-1">{hint}</span>
+                      <span>{max}</span>
+                    </div>
+
+                    {/* Number input */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={min}
+                        max={max}
+                        value={thresh[key]}
+                        onChange={e => setThreshField(key, Math.min(max, Math.max(min, Number(e.target.value))))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500/50"
+                      />
+                      <span className="text-[10px] text-gray-600 whitespace-nowrap">sensor value</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Water level visual guide */}
+              <div className="bg-slate-950/60 border border-slate-800/40 rounded-xl p-4">
+                <p className="text-xs text-gray-500 mb-3 font-semibold uppercase tracking-wider">Current Level Order</p>
+                <div className="flex items-center gap-1 text-[11px] flex-wrap">
+                  <span className="bg-slate-800 text-slate-400 px-2 py-1 rounded-lg font-mono">{thresh.threshold_no_water_max}</span>
+                  <span className="text-gray-600">→ Dry</span>
+                  <span className="text-gray-700 mx-1">|</span>
+                  <span className="bg-blue-900/30 text-blue-400 px-2 py-1 rounded-lg font-mono">{thresh.threshold_low_max}</span>
+                  <span className="text-gray-600">→ Low</span>
+                  <span className="text-gray-700 mx-1">|</span>
+                  <span className="bg-cyan-900/30 text-cyan-400 px-2 py-1 rounded-lg font-mono">{thresh.threshold_medium_max}</span>
+                  <span className="text-gray-600">→ Medium</span>
+                  <span className="text-gray-700 mx-1">|</span>
+                  <span className="bg-emerald-900/30 text-emerald-400 px-2 py-1 rounded-lg font-mono">{thresh.alert_threshold}+</span>
+                  <span className="text-gray-600">→ 🚨 Alert!</span>
+                </div>
+              </div>
+
+              {/* Save button */}
+              <div className="flex justify-end pt-1">
+                <button
+                  onClick={handleSaveThresholds}
+                  disabled={threshSaving}
+                  className="flex items-center gap-2 bg-cyan-500/15 border border-cyan-500/30 hover:bg-cyan-500/25 hover:border-cyan-500/50 text-cyan-300 font-semibold px-6 py-2.5 rounded-xl text-sm transition-all disabled:opacity-50"
+                >
+                  {threshSaving ? (
+                    <span className="w-4 h-4 border-2 border-cyan-300/30 border-t-cyan-300 rounded-full animate-spin" />
+                  ) : threshSaved ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Droplet className="w-4 h-4" />
+                  )}
+                  {threshSaving ? 'Saving...' : threshSaved ? '✅ Saved! Now restart your device' : 'Save Water Level Settings'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
+

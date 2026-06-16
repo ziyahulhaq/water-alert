@@ -18,6 +18,14 @@ create table if not exists public.devices (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- Add dynamic threshold columns (safe to re-run — uses IF NOT EXISTS)
+alter table public.devices
+  add column if not exists threshold_no_water_max  integer not null default 150,
+  add column if not exists threshold_low_max        integer not null default 600,
+  add column if not exists threshold_medium_max     integer not null default 1200,
+  add column if not exists alert_threshold          integer not null default 601,
+  add column if not exists reset_threshold          integer not null default 150;
+
 -- Create water events table
 create table if not exists public.water_events (
   id uuid primary key default gen_random_uuid(),
