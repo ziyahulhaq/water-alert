@@ -262,12 +262,12 @@ class MockSupabaseClient {
           }
         }
 
-        // devices table upsert on conflict mac_id
+        // devices table upsert on conflict mac_hash
         // notification_settings table upsert on conflict user_id
         // user_device table upsert on conflict user_id+device_id
         // profiles table upsert on conflict id
         const key = table === 'devices'
-          ? 'mac_id'
+          ? 'mac_hash'
           : table === 'notification_settings'
             ? 'user_id'
             : table === 'user_device'

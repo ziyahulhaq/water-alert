@@ -443,7 +443,6 @@ export default function DevicePairing() {
         .from('devices')
         .upsert(
           {
-            mac_id: bleMac,
             mac_hash: macHash,
             model_id: bleModelId || `WD-${bleMac.replace(/:/g, '').slice(-6)}`,
             status: 'online',
