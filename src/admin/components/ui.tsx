@@ -120,7 +120,7 @@ export function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', 
 }
 
 // ─── Badge ───────────────────────────────────────────────────
-export function Badge({ value, type }: { value: string; type?: 'role' | 'status' | 'device' }) {
+export function Badge({ value, type: _type }: { value: string; type?: 'role' | 'status' | 'device' }) {
   const classes: Record<string, string> = {
     admin:    'bg-indigo-500/15 text-indigo-400 border-indigo-500/30',
     user:     'bg-slate-500/15 text-slate-400 border-slate-500/30',

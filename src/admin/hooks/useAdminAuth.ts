@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
 export interface AdminAuthState {
   user: any | null;
@@ -37,7 +38,7 @@ export function useAdminAuth(): AdminAuthState {
 
     init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e: AuthChangeEvent, session: Session | null) => {
       if (!mounted) return;
       setUser(session?.user ?? null);
       if (!session?.user) { setProfile(null); setLoading(false); }

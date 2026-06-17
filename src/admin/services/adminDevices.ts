@@ -14,7 +14,7 @@ export async function listDevices(): Promise<AdminDevice[]> {
       .from('devices')
       .select('id, mac_hash, model_id, status, last_seen');
     if (rawError) throw rawError;
-    return (raw ?? []).map(d => ({ ...d, user_email: null, user_name: null, user_id: null })) as AdminDevice[];
+    return (raw ?? []).map((d: any) => ({ ...d, user_email: null, user_name: null, user_id: null })) as AdminDevice[];
   }
 
   return (data ?? []) as AdminDevice[];

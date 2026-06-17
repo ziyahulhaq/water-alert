@@ -25,10 +25,10 @@ export default function AdminDashboard() {
     try {
       const [statsData, usersData, devicesData, eventsData, logsData] = await Promise.all([
         getDashboardStats(),
-        supabase.from('profiles').select('id,name,email,role,status,created_at').order('created_at', { ascending: false }).limit(5).then(r => r.data ?? []),
-        supabase.from('devices').select('id,mac_hash,model_id,status,last_seen').order('last_seen', { ascending: false, nullsFirst: false }).limit(5).then(r => r.data ?? []),
-        supabase.from('water_events').select('id,device_id,detected_at,water_level').order('detected_at', { ascending: false }).limit(10).then(r => r.data ?? []),
-        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(8).then(r => r.data ?? []),
+        supabase.from('profiles').select('id,name,email,role,status,created_at').order('created_at', { ascending: false }).limit(5).then((r: any) => r.data ?? []),
+        supabase.from('devices').select('id,mac_hash,model_id,status,last_seen').order('last_seen', { ascending: false, nullsFirst: false }).limit(5).then((r: any) => r.data ?? []),
+        supabase.from('water_events').select('id,device_id,detected_at,water_level').order('detected_at', { ascending: false }).limit(10).then((r: any) => r.data ?? []),
+        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(8).then((r: any) => r.data ?? []),
       ]);
       setStats(statsData);
       setUsers(usersData as AdminUser[]);
