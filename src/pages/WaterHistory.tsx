@@ -31,15 +31,16 @@ export default function WaterHistory() {
       }
 
       try {
-        // 1. Fetch user's device
-        const { data: deviceData, error: deviceError } = await supabase
-          .from('devices')
-          .select('id')
+        // 1. Fetch user's device via user_device junction table
+        const { data: linkData, error: deviceError } = await supabase
+          .from('user_device')
+          .select('device_id')
           .eq('user_id', user.id)
-          .then((res: any) => res);
+          .limit(1)
+          .single();
 
-        if (deviceError) throw deviceError;
-        const userDevice = deviceData && deviceData.length > 0 ? deviceData[0] : null;
+        if (deviceError && deviceError.code !== 'PGRST116') throw deviceError;
+        const userDevice = linkData ? { id: linkData.device_id } : null;
 
         if (mounted) {
           setDevice(userDevice);

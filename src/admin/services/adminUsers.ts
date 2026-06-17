@@ -63,7 +63,10 @@ export async function updateUser(userId: string, updates: UpdateUserPayload, act
     if ((count ?? 0) <= 1) throw new Error('Cannot demote the last admin account.');
   }
 
-  const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
+  // Strip password — profiles table has no password column.
+  // Password changes must go through Supabase Auth API separately.
+  const { password: _pw, email: _email, ...profileUpdates } = updates as any;
+  const { error } = await supabase.from('profiles').update(profileUpdates).eq('id', userId);
   if (error) throw error;
 
   await logAudit('USER_UPDATED', actorId, actorEmail, userId, 'user', updates);

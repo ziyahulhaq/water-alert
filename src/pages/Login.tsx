@@ -28,7 +28,18 @@ export default function Login() {
       if (authError) {
         setError(authError.message);
       } else if (data?.user) {
-        navigate('/');
+        // Check role — redirect admin to admin panel, users to dashboard
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profile?.role === 'admin') {
+          navigate('/admin/dashboard');
+        } else {
+          navigate('/');
+        }
       }
     } catch (err: any) {
       setError('An unexpected error occurred. Please try again.');
