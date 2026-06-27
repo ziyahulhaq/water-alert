@@ -94,53 +94,57 @@ serve(async (req: Request) => {
 
   let deviceId: string;
 
-  // ── Derive model_id from MAC/hash (matches firmware: "WD" + last 6 hex chars) ──
-  // Strip colons/dashes and take the last 6 uppercase hex chars
-  const macClean  = macHash.replace(/[^a-fA-F0-9]/g, "").toUpperCase();
-  const modelId   = "WD" + macClean.slice(-6);
+  // ── Derive model_id from MAC (matches firmware: "WD" + last 6 hex chars) ──
+  const macClean = macHash.replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+  const modelId  = "WD" + macClean.slice(-6);
 
   if (existingDevice) {
-    // ── Device exists — update last_seen & status ─────────
+    // ── Device found by mac_hash — just update last_seen ─────
     deviceId = existingDevice.id;
-
-    const { error: updateError } = await supabase
+    await supabase
       .from("devices")
-      .update({
-        status:    "online",
-        last_seen: new Date().toISOString(),
-      })
+      .update({ status: "online", last_seen: new Date().toISOString() })
       .eq("id", deviceId);
-
-    if (updateError) {
-      console.warn("[DB] Could not update last_seen:", updateError.message);
-      // Non-fatal — continue with event insert
-    } else {
-      console.log("[DB] Device updated. id=", deviceId);
-    }
+    console.log("[DB] Device updated. id=", deviceId);
 
   } else {
-    // ── New device — insert it (model_id required, NOT NULL) ──
-    const { data: newDevice, error: insertError } = await supabase
+    // ── Not found by mac_hash — upsert on model_id ───────────
+    // Handles: brand-new device OR mac_hash mismatch on existing device
+    const { data: upserted, error: upsertError } = await supabase
       .from("devices")
-      .insert({
-        mac_hash:  macHash,
-        model_id:  modelId,           // ← required NOT NULL column
-        status:    "online",
-        last_seen: new Date().toISOString(),
-      })
+      .upsert(
+        {
+          mac_hash:  macHash,
+          model_id:  modelId,
+          status:    "online",
+          last_seen: new Date().toISOString(),
+        },
+        { onConflict: "model_id", ignoreDuplicates: false }  // update on conflict
+      )
       .select("id")
       .single();
 
-    if (insertError || !newDevice) {
-      console.error("[DB] Device insert failed:", insertError);
-      return new Response(
-        JSON.stringify({ ok: false, error: "Device insert failed", detail: insertError?.message }),
-        { status: 500, headers: { ...CORS, "Content-Type": "application/json" } }
-      );
-    }
+    if (upsertError || !upserted) {
+      console.error("[DB] Device upsert failed:", upsertError);
+      // Last resort: look up by model_id directly
+      const { data: byModel } = await supabase
+        .from("devices")
+        .select("id")
+        .eq("model_id", modelId)
+        .maybeSingle();
 
-    deviceId = newDevice.id;
-    console.log("[DB] New device created. id=", deviceId, "model_id=", modelId);
+      if (!byModel) {
+        return new Response(
+          JSON.stringify({ ok: false, error: "Device upsert failed", detail: upsertError?.message }),
+          { status: 500, headers: { ...CORS, "Content-Type": "application/json" } }
+        );
+      }
+      deviceId = byModel.id;
+      console.log("[DB] Device found by model_id fallback. id=", deviceId);
+    } else {
+      deviceId = upserted.id;
+      console.log("[DB] Device upserted. id=", deviceId, "model_id=", modelId);
+    }
   }
 
   // ── Step 2: Insert water event ────────────────────────────
