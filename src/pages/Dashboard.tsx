@@ -232,20 +232,29 @@ export default function Dashboard() {
 
   // Handles both numeric (1) from simulator and text (HIGH/MEDIUM) from ESP32
   const isWaterDetected = (level: any): boolean => {
-    if (level === 1 || level === '1') return true;
+    const n = Number(level);
+    if (!isNaN(n)) return n >= 1;          // 1=LOW, 2=MED, 3=HIGH → detected
     if (typeof level === 'string') {
       const l = level.toUpperCase();
-      return l === 'HIGH' || l === 'MEDIUM';
+      return l === 'HIGH' || l === 'MEDIUM' || l === 'LOW' || l === 'WATER_HIGH' || l === 'WATER_MED';
     }
     return false;
   };
 
   const getLevelLabel = (level: any): string => {
+    const n = Number(level);
+    if (!isNaN(n)) {
+      if (n === 0) return 'No Water';
+      if (n === 1) return 'Low';
+      if (n === 2) return 'Medium (Flowing)';
+      if (n === 3) return 'High (Flowing)';
+    }
     if (typeof level === 'string' && level.trim() !== '') {
       const l = level.toUpperCase();
-      if (l === 'HIGH') return 'High (Flow active)';
-      if (l === 'MEDIUM') return 'Medium (Flow active)';
-      if (l === 'LOW') return 'Low (Dry / Stop)';
+      if (l === 'HIGH'   || l === 'WATER_HIGH') return 'High (Flowing)';
+      if (l === 'MEDIUM' || l === 'WATER_MED')  return 'Medium (Flowing)';
+      if (l === 'LOW'    || l === 'WATER_LOW')  return 'Low';
+      if (l === 'NO_WATER') return 'No Water';
       return level;
     }
     return level === 1 ? 'High (Flow active)' : 'Low (Dry / Stop)';

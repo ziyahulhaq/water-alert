@@ -160,7 +160,7 @@ export default function WaterHistory() {
         /* Timeline View */
         <div className="relative border-l border-slate-800 ml-4 pl-6 space-y-6 pb-4">
           {events.map((event) => {
-            const isDetected = event.water_level === 1;
+            const isDetected = Number(event.water_level) >= 1;  // 1=LOW, 2=MED, 3=HIGH
             return (
               <div key={event.id} className="relative group">
                 {/* Timeline node */}
