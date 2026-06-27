@@ -19,6 +19,190 @@ function waterLevelToNumeric(level: string | undefined): number {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+//  Web Push Utilities (Deno-native, no npm — RFC 8291 / RFC 8188)
+// ══════════════════════════════════════════════════════════════
+
+function urlB64Decode(b64: string): Uint8Array {
+  const padding = "=".repeat((4 - (b64.length % 4)) % 4);
+  const base64 = (b64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+function uint8ToUrlB64(arr: Uint8Array): string {
+  return btoa(String.fromCharCode(...arr))
+    .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function concat(...arrays: Uint8Array[]): Uint8Array {
+  let len = 0;
+  for (const a of arrays) len += a.length;
+  const out = new Uint8Array(len);
+  let offset = 0;
+  for (const a of arrays) { out.set(a, offset); offset += a.length; }
+  return out;
+}
+
+/**
+ * Sign a VAPID JWT for the given push endpoint.
+ * Returns the full "vapid t=<jwt>,k=<pubKey>" Authorization header value.
+ */
+async function vapidAuth(
+  endpoint: string,
+  vapidPublicKey: string,   // base64url uncompressed P-256 point (65 bytes)
+  vapidPrivateKey: string,  // base64url raw EC scalar (32 bytes)
+  vapidSubject: string,     // e.g. "mailto:admin@example.com"
+): Promise<string> {
+  const { protocol, host } = new URL(endpoint);
+  const audience = `${protocol}//${host}`;
+  const exp = Math.floor(Date.now() / 1000) + 12 * 3600;
+
+  const toB64url = (s: string) =>
+    btoa(s).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+
+  const header  = toB64url(JSON.stringify({ typ: "JWT", alg: "ES256" }));
+  const payload = toB64url(JSON.stringify({ aud: audience, exp, sub: vapidSubject }));
+  const signing = `${header}.${payload}`;
+
+  // Build JWK from raw private key + uncompressed public key
+  const pubBytes = urlB64Decode(vapidPublicKey);
+  const jwk = {
+    kty: "EC", crv: "P-256", ext: true,
+    d: vapidPrivateKey,
+    x: uint8ToUrlB64(pubBytes.slice(1, 33)),
+    y: uint8ToUrlB64(pubBytes.slice(33, 65)),
+  };
+  const signingKey = await crypto.subtle.importKey(
+    "jwk", jwk,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    signingKey,
+    new TextEncoder().encode(signing)
+  );
+
+  const jwt = `${signing}.${uint8ToUrlB64(new Uint8Array(sig))}`;
+  return `vapid t=${jwt},k=${vapidPublicKey}`;
+}
+
+/**
+ * Encrypt a push payload string following RFC 8291 (aes128gcm content-encoding).
+ *  - p256dhB64 : subscriber's public key from PushSubscription.keys.p256dh
+ *  - authB64   : subscriber's auth secret from PushSubscription.keys.auth
+ */
+async function encryptPayload(
+  message: string,
+  p256dhB64: string,
+  authB64: string,
+): Promise<Uint8Array> {
+  const enc = new TextEncoder();
+
+  // 1. Random 16-byte salt for this message
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+
+  // 2. Import receiver's public key
+  const receiverRaw = urlB64Decode(p256dhB64);
+  const receiverKey = await crypto.subtle.importKey(
+    "raw", receiverRaw, { name: "ECDH", namedCurve: "P-256" }, true, []
+  );
+
+  // 3. Generate ephemeral sender key pair
+  const senderPair = await crypto.subtle.generateKey(
+    { name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]
+  );
+  const senderRaw = new Uint8Array(
+    await crypto.subtle.exportKey("raw", senderPair.publicKey)
+  );
+
+  // 4. ECDH shared secret (256 bits)
+  const ecdhBits = await crypto.subtle.deriveBits(
+    { name: "ECDH", public: receiverKey }, senderPair.privateKey, 256
+  );
+
+  // 5. First HKDF: Extract+Expand with auth as salt → IKM
+  //    IKM = HKDF-SHA256( salt=auth_secret, IKM=ecdh_secret,
+  //                       info="WebPush: info\0" || receiverPub || senderPub )
+  const ecdhKey = await crypto.subtle.importKey(
+    "raw", ecdhBits, { name: "HKDF" }, false, ["deriveBits"]
+  );
+  const webpushInfo = concat(
+    enc.encode("WebPush: info\0"), receiverRaw, senderRaw
+  );
+  const ikm = await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt: urlB64Decode(authB64), info: webpushInfo },
+    ecdhKey, 256
+  );
+
+  // 6. Second HKDF with per-message salt → CEK (128 bit) + NONCE (96 bit)
+  const ikmKey = await crypto.subtle.importKey(
+    "raw", ikm, { name: "HKDF" }, false, ["deriveBits"]
+  );
+  const [cekBits, nonceBits] = await Promise.all([
+    crypto.subtle.deriveBits(
+      { name: "HKDF", hash: "SHA-256", salt, info: enc.encode("Content-Encoding: aes128gcm\0") },
+      ikmKey, 128
+    ),
+    crypto.subtle.deriveBits(
+      { name: "HKDF", hash: "SHA-256", salt, info: enc.encode("Content-Encoding: nonce\0") },
+      ikmKey, 96
+    ),
+  ]);
+
+  // 7. Encrypt plaintext + \x02 padding delimiter with AES-128-GCM
+  const cek = await crypto.subtle.importKey(
+    "raw", cekBits, { name: "AES-GCM" }, false, ["encrypt"]
+  );
+  const plaintext = concat(enc.encode(message), new Uint8Array([2]));
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonceBits }, cek, plaintext)
+  );
+
+  // 8. Build aes128gcm content header:
+  //    salt(16) | rs(4 BE uint32) | idlen(1) | senderPub(65) | ciphertext
+  const header = new Uint8Array(16 + 4 + 1 + senderRaw.length);
+  header.set(salt, 0);
+  new DataView(header.buffer).setUint32(16, 4096, false);  // record size = 4096
+  header[20] = senderRaw.length;                           // idlen = 65
+  header.set(senderRaw, 21);
+
+  return concat(header, ciphertext);
+}
+
+/**
+ * Send a single Web Push notification.
+ * Returns the HTTP status from the push service (201 = success, 410 = expired).
+ */
+async function sendWebPush(
+  endpoint: string,
+  p256dh: string,
+  auth: string,
+  payload: Record<string, unknown>,
+  vapidPublicKey: string,
+  vapidPrivateKey: string,
+  vapidSubject: string,
+): Promise<number> {
+  const [authorization, body] = await Promise.all([
+    vapidAuth(endpoint, vapidPublicKey, vapidPrivateKey, vapidSubject),
+    encryptPayload(JSON.stringify(payload), p256dh, auth),
+  ]);
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization:      authorization,
+      "Content-Encoding": "aes128gcm",
+      "Content-Type":     "application/octet-stream",
+      TTL:                "86400",
+    },
+    body,
+  });
+
+  return res.status;
+}
+
 // ─────────────────────────────────────────────────────────────
 serve(async (req: Request) => {
 
@@ -202,7 +386,98 @@ serve(async (req: Request) => {
 
   console.log("[DB] Water event saved. event_id=", eventData.id);
 
-  // ── Step 3: Success response ──────────────────────────────
+  // ── Step 3: Web Push fan-out ──────────────────────────────
+  // Read VAPID credentials from edge-function secrets
+  const vapidPublicKey  = Deno.env.get("VAPID_PUBLIC_KEY")  ?? "";
+  const vapidPrivateKey = Deno.env.get("VAPID_PRIVATE_KEY") ?? "";
+  const vapidSubject    = Deno.env.get("VAPID_SUBJECT")     ?? "mailto:admin@wateralert.app";
+
+  if (vapidPublicKey && vapidPrivateKey) {
+    try {
+      // Find all push subscriptions for users linked to this device
+      const { data: subs, error: subError } = await supabase
+        .from("push_subscriptions")
+        .select("id, endpoint, p256dh, auth")
+        .in(
+          "user_id",
+          supabase
+            .from("user_device")
+            .select("user_id")
+            .eq("device_id", deviceId)
+        );
+
+      if (subError) {
+        console.warn("[Push] Could not load subscriptions:", subError.message);
+      } else if (subs && subs.length > 0) {
+        // Build notification payload
+        const isArrived = eventType === "arrived";
+        const levelLabel =
+          waterLevel === "NO_WATER"   ? "No Water" :
+          waterLevel === "WATER_LOW"  ? "Low"      :
+          waterLevel === "WATER_MED"  ? "Medium"   :
+          waterLevel === "WATER_HIGH" ? "High"     : "No Water";
+
+        const pushPayload = {
+          title: isArrived ? "💧 Water Supply Arrived!" : "🚫 Water Supply Stopped",
+          body: isArrived
+            ? `Water is now flowing. Level: ${levelLabel}`
+            : "Municipal water supply has been cut. Store water now.",
+          icon: "/icon-192.png",
+          badge: "/favicon-32.png",
+          tag: "water-status",
+          url: "/",
+          event_type: eventType,
+          water_level: waterLevel,
+        };
+
+        console.log(`[Push] Sending to ${subs.length} subscription(s)…`);
+
+        const expiredIds: string[] = [];
+
+        await Promise.allSettled(
+          subs.map(async (sub: { id: string; endpoint: string; p256dh: string; auth: string }) => {
+            try {
+              const status = await sendWebPush(
+                sub.endpoint,
+                sub.p256dh,
+                sub.auth,
+                pushPayload,
+                vapidPublicKey,
+                vapidPrivateKey,
+                vapidSubject,
+              );
+              console.log(`[Push] endpoint=${sub.endpoint.slice(0, 40)}… status=${status}`);
+
+              // 410 = subscription expired / unsubscribed — remove from DB
+              if (status === 410 || status === 404) {
+                expiredIds.push(sub.id);
+              }
+            } catch (err) {
+              console.error("[Push] Failed for subscription:", sub.id, err);
+            }
+          })
+        );
+
+        // Clean up expired subscriptions
+        if (expiredIds.length > 0) {
+          await supabase
+            .from("push_subscriptions")
+            .delete()
+            .in("id", expiredIds);
+          console.log("[Push] Removed", expiredIds.length, "expired subscription(s).");
+        }
+      } else {
+        console.log("[Push] No push subscriptions found for device:", deviceId);
+      }
+    } catch (pushErr) {
+      // Never let push errors block the success response to the ESP32
+      console.error("[Push] Fan-out error (non-fatal):", pushErr);
+    }
+  } else {
+    console.warn("[Push] VAPID keys not configured — skipping push notifications.");
+  }
+
+  // ── Step 4: Success response ──────────────────────────────
   return new Response(
     JSON.stringify({
       ok:        true,
