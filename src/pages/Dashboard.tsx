@@ -36,6 +36,7 @@ interface WaterEvent {
   id: string;
   detected_at: string;
   water_level: number;
+  event_type?: string;
 }
 
 interface Profile {
@@ -480,11 +481,12 @@ export default function Dashboard() {
                           {getLevelLabel(event.water_level)}
                         </td>
                         <td className="py-3 text-right pr-2">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${isWaterDetected(event.water_level)
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            (event.event_type ? event.event_type === 'arrived' : isWaterDetected(event.water_level))
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'
                             : 'bg-slate-800 text-gray-400 border border-slate-700/30'
                             }`}>
-                            {isWaterDetected(event.water_level) ? 'Water Detected' : 'Stopped'}
+                            {(event.event_type ? event.event_type === 'arrived' : isWaterDetected(event.water_level)) ? 'Water Detected' : 'Stopped'}
                           </span>
                         </td>
                       </tr>

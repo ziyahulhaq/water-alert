@@ -11,6 +11,7 @@ interface WaterEvent {
   id: string;
   detected_at: string;
   water_level: number;
+  event_type?: string;
 }
 
 export default function WaterHistory() {
@@ -160,7 +161,7 @@ export default function WaterHistory() {
         /* Timeline View */
         <div className="relative border-l border-slate-800 ml-4 pl-6 space-y-6 pb-4">
           {events.map((event) => {
-            const isDetected = Number(event.water_level) >= 1;  // 1=LOW, 2=MED, 3=HIGH
+            const isDetected = event.event_type ? event.event_type === 'arrived' : Number(event.water_level) >= 1;
             return (
               <div key={event.id} className="relative group">
                 {/* Timeline node */}
@@ -182,7 +183,7 @@ export default function WaterHistory() {
                     </div>
                     <div>
                       <h4 className="font-bold text-sm text-white">
-                        {isDetected ? 'Water Supply Detected' : 'Water Supply Stopped'}
+                        {isDetected ? 'Water Supply Arrived' : 'Water Supply Stopped'}
                       </h4>
                       <p className="text-xs text-gray-500 mt-0.5">
                         Pressure reading: {isDetected ? 'Flow pressure active' : 'Zero pressure / Dry line'}
