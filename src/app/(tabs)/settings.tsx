@@ -1,6 +1,3 @@
-// ─── Settings Screen ─────────────────────────────────────────────────────────
-// Native Push Notifications, WhatsApp config, and account management
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -21,6 +18,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useDevice } from '@/hooks/use-device';
 import { db, isMockMode } from '@/lib/storage-client';
 import { AppColors, BorderRadius, FontSizes, Spacing } from '@/constants/theme';
+import { getFCMToken } from '@/lib/notifications';
 
 // Safely require expo-notifications to prevent crashing in Expo Go SDK 53+ on Android
 let Notifications: any = null;
@@ -29,6 +27,7 @@ try {
 } catch (e) {
   console.warn('expo-notifications could not be initialized:', e);
 }
+
 
 // ─── Push Notification Status ────────────────────────────────────────────────
 
@@ -104,78 +103,50 @@ export default function SettingsScreen() {
     }
   }
 
-  // ─── Enable Push Notifications ───────────────────────────────────
+  // ─── Enable Push Notifications (FCM — works on Android + iOS) ──────
   async function handleEnablePush() {
-    if (!Notifications) {
-      Alert.alert(
-        'Not Supported',
-        'Push notifications are not supported in Expo Go on Android. Please use a development build to register real device tokens.'
-      );
-      return;
-    }
-
     try {
       setEnablingPush(true);
 
-      // Request permission
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
+      // getFCMToken() internally calls messaging().requestPermission()
+      // which triggers the iOS permission dialog and Android permission
+      // on Android 13+. It returns null if permission is denied.
+      const token = await getFCMToken();
 
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-
-      if (finalStatus !== 'granted') {
+      if (!token) {
         setPushStatus('Permission Denied');
         Alert.alert(
           'Permission Denied',
-          'Please enable notifications in your device settings.'
+          Platform.OS === 'ios'
+            ? 'Please enable notifications in Settings → Smart Water Alert → Notifications.'
+            : 'Please enable notifications in your device settings.'
         );
         return;
       }
 
-      // Create Android notification channel
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('water_alerts', {
-          name: 'Water Alerts',
-          description: 'Emergency water supply notifications',
-          importance: Notifications.AndroidImportance.MAX,
-          sound: 'default',
-          vibrationPattern: [0, 500, 250, 500],
-          enableLights: true,
-          lightColor: '#3B82F6',
-          enableVibrate: true,
-          showBadge: true,
-          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        });
-      }
-
-      // Get Expo Push Token
-      const projectId =
-        Constants?.expoConfig?.extra?.eas?.projectId ??
-        Constants?.easConfig?.projectId;
-
-      let token: string;
-      if (projectId) {
-        token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-      } else {
-        // Fallback for development
-        token = (await Notifications.getExpoPushTokenAsync()).data;
-      }
-
       setPushToken(token);
 
-      // Save to database
+      // Save FCM token to mobile_push_tokens (same table _layout.tsx uses)
       if (user) {
-        await db.from('profiles').update({ push_token: token }).eq('id', user.id);
+        const { error } = await db.from('mobile_push_tokens').upsert(
+          {
+            user_id: user.id,
+            fcm_token: token,
+            platform: Platform.OS,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' }
+        );
+        if (error) {
+          console.error('Error saving FCM token from settings:', error);
+        }
       }
 
       setPushStatus('Enabled');
-      Alert.alert('Success', 'Push notifications enabled!');
+      Alert.alert('Success', 'Push notifications enabled! You will now receive water alerts.');
     } catch (error) {
       console.error('Push notification error:', error);
-      Alert.alert('Error', 'Failed to enable push notifications.');
+      Alert.alert('Error', 'Failed to enable push notifications. Please try again.');
     } finally {
       setEnablingPush(false);
     }

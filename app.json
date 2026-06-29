@@ -8,9 +8,16 @@
     "scheme": "aqua",
     "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "supportsTablet": true,
-      "bundleIdentifier": "com.wateralert.aqua"
+      "bundleIdentifier": "com.wateralert.aqua",
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "UIBackgroundModes": ["fetch", "remote-notification"]
+      },
+      "entitlements": {
+        "aps-environment": "production"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -41,6 +48,11 @@
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
+          },
+          "ios": {
+            "image": "./assets/images/splash-icon.png",
+            "imageWidth": 120,
+            "resizeMode": "contain"
           }
         }
       ],

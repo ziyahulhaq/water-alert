@@ -20,6 +20,11 @@ web-build/
 .env.*
 !.env.example
 
+# Firebase config (contains API keys — do not commit)
+google-services.json
+GoogleService-Info.plist
+
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
