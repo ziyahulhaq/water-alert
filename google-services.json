@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "992437578172",
+    "project_id": "water-monitoring-8ff72",
+    "storage_bucket": "water-monitoring-8ff72.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:992437578172:android:ca0a5d7484ae9aec6fe3b9",
+        "android_client_info": {
+          "package_name": "com.wateralert.aqua"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGcGFZWQwU_QZwZ-JyP32FUj9mXES0z6g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
