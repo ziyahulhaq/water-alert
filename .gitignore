@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 
+<<<<<<< HEAD
 # Expo
 .expo/
 .expo-shared/
@@ -24,21 +25,48 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+=======
+# Build output
+dist/
+dev-dist/
+build/
+
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.*.local
+.env.production
+>>>>>>> fbc1833553f259af07d245522edacc529cc389fb
 
 # TypeScript
 *.tsbuildinfo
 
+<<<<<<< HEAD
 # Metro / React Native
 .metro-cache/
 
 # Editors
 .vscode/
 .idea/
+=======
+# Vite
+.vite/
+
+# SQL files with sensitive schema/seeds — keep local only
+admin_schema.sql
+db_cleanup.sql
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+>>>>>>> fbc1833553f259af07d245522edacc529cc389fb
 
 # OS files
 .DS_Store
 Thumbs.db
 
+<<<<<<< HEAD
 # Package manager lockfiles not used by this project
 yarn.lock
 pnpm-lock.yaml
@@ -48,3 +76,14 @@ pnpm-lock.yaml
 
 expo-env.d.ts
 # @end expo-cli
+=======
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Supabase local dev (if used)
+supabase/.branches/
+supabase/.temp/
+>>>>>>> fbc1833553f259af07d245522edacc529cc389fb
