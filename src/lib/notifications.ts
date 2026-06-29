@@ -1,4 +1,5 @@
 import messaging from "@react-native-firebase/messaging";
+import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
@@ -6,6 +7,8 @@ import { Platform } from "react-native";
 // Must match the `channel_id` sent from the FCM payload in save_and_send_function
 
 const WATER_ALERTS_CHANNEL = "water_alerts";
+const hasFirebaseConfig =
+  Platform.OS === "android" || Constants.expoConfig?.extra?.hasIosFirebaseConfig === true;
 
 /**
  * Create the `water_alerts` Android notification channel.
@@ -101,6 +104,8 @@ export function setupNotificationListeners(): () => void {
  * Returns an unsubscribe function.
  */
 export function setupFirebaseForegroundListener(): () => void {
+  if (!hasFirebaseConfig) return () => {};
+
   const unsubscribe = messaging().onMessage(async (remoteMessage) => {
     console.log(
       "[FCM] Foreground message received:",
@@ -147,6 +152,8 @@ export function initializeNotifications() {
 // ── FCM Token ────────────────────────────────────────────────────────────────
 
 export async function getFCMToken() {
+  if (!hasFirebaseConfig) return null;
+
   // Ask the user for notification permission
   const authStatus = await messaging().requestPermission();
 
