@@ -1,6 +1,3 @@
-// ─── Login Screen ────────────────────────────────────────────────────────────
-// Premium dark login form with email/password and animated branding
-
 import React, { useState } from 'react';
 import {
   View,
@@ -10,23 +7,25 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
+  TextInput,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { InputField } from '@/components/ui/input-field';
-import { GradientButton } from '@/components/ui/gradient-button';
 import { useAuth } from '@/hooks/use-auth';
-import { AppColors, BorderRadius, FontSizes, Spacing } from '@/constants/theme';
-import { isMockMode } from '@/lib/storage-client';
+import { useTheme } from '@/theme/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
+  const { colors } = useTheme();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
 
   const handleLogin = async () => {
     setError(null);
@@ -51,72 +50,84 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.bg }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
+        
         {/* Header / Branding */}
         <View style={styles.brandingContainer}>
-          <LinearGradient
-            colors={['rgba(59,130,246,0.15)', 'transparent']}
-            style={styles.glowOrb}
-          />
-          <Text style={styles.logoIcon}>💧</Text>
-          <Text style={styles.appName}>Smart Water Alert</Text>
-          <Text style={styles.tagline}>Monitor your water supply in real-time</Text>
+          <Ionicons name="water-outline" size={42} color={colors.accent} style={{ marginBottom: 16 }} />
+          <Text style={[styles.appName, { color: colors.t1 }]}>WATER ALERT</Text>
+          <Text style={[styles.tagline, { color: colors.t3 }]}>Sign in to monitor your supply</Text>
         </View>
-
-        {/* Mock Mode Badge */}
-        {isMockMode && (
-          <View style={styles.mockBadge}>
-            <Text style={styles.mockBadgeText}>🧪 Demo Mode — No Supabase Connected</Text>
-          </View>
-        )}
 
         {/* Form */}
         <View style={styles.formContainer}>
-          <InputField
-            label="Email Address"
-            icon="📧"
-            placeholder="you@example.com"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <InputField
-            label="Password"
-            icon="🔒"
-            placeholder="Enter your password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          {/* Email Field */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: colors.t3 }]}>EMAIL</Text>
+            <TextInput
+              style={[
+                styles.input,
+                { 
+                  backgroundColor: colors.surface, 
+                  borderColor: emailFocused ? colors.accent : colors.hair,
+                  color: colors.t1
+                }
+              ]}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              onFocus={() => setEmailFocused(true)}
+              onBlur={() => setEmailFocused(false)}
+            />
+          </View>
+
+          {/* Password Field */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: colors.t3 }]}>PASSWORD</Text>
+            <TextInput
+              style={[
+                styles.input,
+                { 
+                  backgroundColor: colors.surface, 
+                  borderColor: passwordFocused ? colors.accent : colors.hair,
+                  color: colors.t1
+                }
+              ]}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              onFocus={() => setPasswordFocused(true)}
+              onBlur={() => setPasswordFocused(false)}
+            />
+          </View>
 
           {error && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>⚠️ {error}</Text>
-            </View>
+            <Text style={[styles.errorText, { color: colors.alert }]}>{error}</Text>
           )}
 
-          <GradientButton
-            title="Sign In"
+          <TouchableOpacity
+            style={[styles.submitButton, { backgroundColor: colors.t1, opacity: loading ? 0.7 : 1 }]}
             onPress={handleLogin}
-            loading={loading}
-            icon="→"
-            style={styles.submitButton}
-          />
+            disabled={loading}
+            activeOpacity={0.8}>
+            <Text style={[styles.submitButtonText, { color: colors.bg }]}>
+              {loading ? 'Signing in...' : 'Sign In'}
+            </Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.registerLink}
-            onPress={() => router.push('/(auth)/register')}
+            style={styles.forgotLink}
+            onPress={() => {}}
             activeOpacity={0.7}>
-            <Text style={styles.registerText}>
-              Don't have an account?{' '}
-              <Text style={styles.registerHighlight}>Create one</Text>
+            <Text style={[styles.forgotText, { color: colors.t3 }]}>
+              Forgot password?
             </Text>
           </TouchableOpacity>
         </View>
@@ -128,87 +139,71 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: AppColors.bgPrimary,
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: Spacing['2xl'],
-    paddingVertical: Spacing['4xl'],
+    paddingHorizontal: 32,
+    paddingBottom: 48,
   },
   brandingContainer: {
     alignItems: 'center',
-    marginBottom: Spacing['3xl'],
-    position: 'relative',
-  },
-  glowOrb: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    top: -60,
-  },
-  logoIcon: {
-    fontSize: 56,
-    marginBottom: Spacing.md,
+    marginBottom: 48,
   },
   appName: {
-    fontSize: FontSizes['3xl'],
-    fontWeight: '800',
-    color: AppColors.textPrimary,
-    marginBottom: Spacing.xs,
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 13,
+    letterSpacing: 0.24 * 13,
+    textTransform: 'uppercase',
+    marginBottom: 8,
   },
   tagline: {
-    fontSize: FontSizes.md,
-    color: AppColors.textMuted,
-  },
-  mockBadge: {
-    alignSelf: 'center',
-    backgroundColor: AppColors.amber + '20',
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.xs,
-    marginBottom: Spacing.xl,
-    borderWidth: 1,
-    borderColor: AppColors.amber + '30',
-  },
-  mockBadgeText: {
-    fontSize: FontSizes.xs,
-    color: AppColors.amber,
-    fontWeight: '600',
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
   },
   formContainer: {
-    backgroundColor: AppColors.bgCard,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: AppColors.bgCardBorder,
-    padding: Spacing['2xl'],
+    width: '100%',
   },
-  errorBox: {
-    backgroundColor: AppColors.danger + '15',
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.lg,
+  inputGroup: {
+    marginBottom: 24,
+  },
+  label: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  input: {
+    height: 46,
     borderWidth: 1,
-    borderColor: AppColors.danger + '30',
+    borderRadius: 4,
+    paddingHorizontal: 16,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
   },
   errorText: {
-    fontSize: FontSizes.sm,
-    color: AppColors.danger,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    marginBottom: 24,
+    marginTop: -8,
   },
   submitButton: {
-    marginTop: Spacing.sm,
-  },
-  registerLink: {
+    height: 48,
+    borderRadius: 4,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: Spacing.xl,
+    marginTop: 8,
   },
-  registerText: {
-    fontSize: FontSizes.sm,
-    color: AppColors.textMuted,
+  submitButtonText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
   },
-  registerHighlight: {
-    color: AppColors.accentBlue,
-    fontWeight: '600',
+  forgotLink: {
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  forgotText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
   },
 });

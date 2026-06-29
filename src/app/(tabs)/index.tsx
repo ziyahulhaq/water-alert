@@ -1,6 +1,3 @@
-// ─── Dashboard Screen ────────────────────────────────────────────────────────
-// Main screen with status cards, recent events, Telegram card, and simulator
-
 import React, { useCallback } from 'react';
 import {
   View,
@@ -9,21 +6,19 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
-import { GlassCard } from '@/components/ui/glass-card';
-import { StatusBadge } from '@/components/ui/status-badge';
-import { SimulatorPanel } from '@/components/simulator-panel';
-import { TelegramCard } from '@/components/telegram-card';
+import { useTheme } from '@/theme/ThemeContext';
 import { useDevice } from '@/hooks/use-device';
-import { useAuth } from '@/hooks/use-auth';
-import { isMockMode } from '@/lib/storage-client';
 import { getRelativeTime, formatTimestamp } from '@/lib/time-utils';
-import { AppColors, BorderRadius, FontSizes, Spacing } from '@/constants/theme';
+import { PulseDot } from '@/components/PulseDot';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 export default function DashboardScreen() {
-  const { user } = useAuth();
-  const { device, recentEvents, latestEvent, profile, loading, refresh } =
-    useDevice();
+  const { colors } = useTheme();
+  const { device, recentEvents, latestEvent, profile, loading, refresh } = useDevice();
+  const router = useRouter();
 
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -35,162 +30,123 @@ export default function DashboardScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={AppColors.accentBlue} />
-        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.bg }]}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
-  const waterAvailable =
-    latestEvent?.event_type === 'arrived' && (latestEvent?.water_level ?? 0) > 0;
-  const deviceOnline = device?.status === 'online';
+  const waterAvailable = latestEvent?.event_type === 'arrived' && (latestEvent?.water_level ?? 0) > 0;
+  const statusColor = waterAvailable ? colors.accent : colors.alert;
+  const statusWord = waterAvailable ? 'FLOWING' : 'STOPPED';
+
+  const formatHHMM = (isoString?: string) => {
+    if (!isoString) return '--:--';
+    const date = new Date(isoString);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+
+  const timeLabel = waterAvailable ? 'FLOWING SINCE' : 'STOPPED AT';
+  const timeValue = formatHHMM(latestEvent?.detected_at);
+  const eventsCount = recentEvents.length;
+  const deviceName = device?.name || 'WTR-01';
+
+  const telegramConnected = !!profile?.chat_id;
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.bg }]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          tintColor={AppColors.accentBlue}
-          colors={[AppColors.accentBlue]}
-          progressBackgroundColor={AppColors.bgSecondary}
+          tintColor={colors.accent}
+          colors={[colors.accent]}
+          progressBackgroundColor={colors.surface}
         />
       }>
-      {/* Greeting */}
-      <Text style={styles.greeting}>
-        Welcome back{user?.email ? `, ${user.email.split('@')[0]}` : ''} 👋
-      </Text>
-
-      {/* ─── Status Cards Row ───────────────────────────────────────── */}
-      <View style={styles.statusRow}>
-        {/* Water Availability */}
-        <GlassCard
-          style={styles.statusCard}
-          glowColor={waterAvailable ? AppColors.emerald : undefined}>
-          <Text style={styles.statusCardIcon}>
-            {waterAvailable ? '💧' : '🚫'}
-          </Text>
-          <Text style={styles.statusCardLabel}>Water Supply</Text>
-          <StatusBadge
-            label={waterAvailable ? 'Available' : 'Not Available'}
-            color={waterAvailable ? AppColors.emerald : AppColors.textMuted}
-            pulse={waterAvailable}
-            size="md"
-          />
-        </GlassCard>
-
-        {/* Device Connectivity */}
-        <GlassCard
-          style={styles.statusCard}
-          glowColor={deviceOnline ? AppColors.accentBlue : undefined}>
-          <Text style={styles.statusCardIcon}>
-            {deviceOnline ? '📡' : '📵'}
-          </Text>
-          <Text style={styles.statusCardLabel}>Device</Text>
-          <StatusBadge
-            label={device ? (deviceOnline ? 'Online' : 'Offline') : 'No Device'}
-            color={
-              device
-                ? deviceOnline
-                  ? AppColors.accentBlue
-                  : AppColors.danger
-                : AppColors.textMuted
-            }
-            pulse={deviceOnline}
-            size="md"
-          />
-        </GlassCard>
+      
+      {/* Hero Section */}
+      <View style={[styles.heroSection, { borderBottomColor: colors.divider }]}>
+        <View style={styles.liveIndicatorRow}>
+          <PulseDot color={statusColor} size={6} />
+          <Text style={[styles.liveLabel, { color: colors.t3 }]}>LIVE</Text>
+        </View>
+        <Text style={[styles.bigStatusWord, { color: statusColor }]}>
+          {statusWord}
+        </Text>
+        <Text style={[styles.heroSubtitle, { color: colors.t2 }]}>
+          {waterAvailable 
+            ? `Water has been flowing for ${getRelativeTime(latestEvent?.detected_at || '').replace(' ago', '')}` 
+            : `Water stopped ${getRelativeTime(latestEvent?.detected_at || '')}`}
+        </Text>
       </View>
 
-      {/* ─── Last Water Detection ───────────────────────────────────── */}
-      <GlassCard>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionIcon}>🕐</Text>
-          <Text style={styles.sectionTitle}>Last Water Detection</Text>
+      {/* Stats Row */}
+      <View style={[styles.statsRow, { borderBottomColor: colors.divider }]}>
+        <View style={styles.statCell}>
+          <Text style={[styles.statLabel, { color: colors.t3 }]}>{timeLabel}</Text>
+          <Text style={[styles.statValue, { color: colors.t1 }]}>{timeValue}</Text>
         </View>
-        {latestEvent ? (
-          <View style={styles.lastDetection}>
-            <Text style={styles.lastDetectionTime}>
-              {formatTimestamp(latestEvent.detected_at)}
-            </Text>
-            <View style={styles.relativeTimeChip}>
-              <Text style={styles.relativeTimeText}>
-                {getRelativeTime(latestEvent.detected_at)}
-              </Text>
-            </View>
-          </View>
-        ) : (
-          <Text style={styles.noDataText}>No events recorded yet</Text>
-        )}
-      </GlassCard>
+        <View style={[styles.verticalDivider, { backgroundColor: colors.divider }]} />
+        <View style={styles.statCell}>
+          <Text style={[styles.statLabel, { color: colors.t3 }]}>EVENTS TODAY</Text>
+          <Text style={[styles.statValue, { color: colors.t1 }]}>{eventsCount}</Text>
+        </View>
+        <View style={[styles.verticalDivider, { backgroundColor: colors.divider }]} />
+        <View style={styles.statCell}>
+          <Text style={[styles.statLabel, { color: colors.t3 }]}>DEVICE</Text>
+          <Text style={[styles.statValue, { color: colors.t1 }]}>{deviceName}</Text>
+        </View>
+      </View>
 
-      {/* ─── Recent Water Supply Events ─────────────────────────────── */}
-      <GlassCard>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionIcon}>📋</Text>
-          <Text style={styles.sectionTitle}>Recent Events</Text>
+      {/* Telegram Row */}
+      <View style={[styles.telegramRow, { borderBottomColor: colors.divider }]}>
+        <PulseDot color={telegramConnected ? colors.accent : colors.alert} size={6} />
+        <View style={styles.telegramTextCol}>
+          <Text style={[styles.telegramStatus, { color: colors.t1 }]}>
+            {telegramConnected ? 'Telegram connected' : 'Telegram not linked'}
+          </Text>
+          <Text style={[styles.telegramHandle, { color: colors.t3 }]}>
+            {telegramConnected ? '@waterbot' : 'No account linked'}
+          </Text>
         </View>
-        {recentEvents.length > 0 ? (
-          <View style={styles.eventsList}>
-            {recentEvents.map((event, index) => (
-              <View
-                key={event.id}
-                style={[
-                  styles.eventItem,
-                  index < recentEvents.length - 1 && styles.eventItemBorder,
-                ]}>
-                <View style={styles.eventLeft}>
-                  <Text style={styles.eventIcon}>
-                    {event.event_type === 'arrived' ? '💧' : '⏹'}
-                  </Text>
-                  <View>
-                    <Text
-                      style={[
-                        styles.eventTitle,
-                        {
-                          color:
-                            event.event_type === 'arrived'
-                              ? AppColors.emerald
-                              : AppColors.textMuted,
-                        },
-                      ]}>
-                      {event.event_type === 'arrived'
-                        ? 'Water Arrived'
-                        : 'Water Stopped'}
-                    </Text>
-                    <Text style={styles.eventTime}>
-                      {formatTimestamp(event.detected_at)}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.eventRelative}>
-                  {getRelativeTime(event.detected_at)}
+      </View>
+
+      {/* Recent Activity Section */}
+      <View style={styles.activitySection}>
+        <View style={styles.activityHeader}>
+          <Text style={[styles.activityTitle, { color: colors.t3 }]}>RECENT ACTIVITY</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/history')}>
+            <Text style={[styles.viewAllLink, { color: colors.accent }]}>View all →</Text>
+          </TouchableOpacity>
+        </View>
+
+        {recentEvents.slice(0, 4).map((event, index) => {
+          const isArrived = event.event_type === 'arrived';
+          return (
+            <View 
+              key={event.id} 
+              style={[
+                styles.activityRow, 
+                { borderBottomColor: colors.divider }
+              ]}
+            >
+              <View style={styles.activityRowLeft}>
+                <View style={[styles.activityDot, { backgroundColor: isArrived ? colors.accent : colors.alert }]} />
+                <Text style={[styles.activityEventLabel, { color: colors.t1 }]}>
+                  {isArrived ? 'Water arrived' : 'Water stopped'}
                 </Text>
               </View>
-            ))}
-          </View>
-        ) : (
-          <Text style={styles.noDataText}>No recent events</Text>
-        )}
-      </GlassCard>
-
-      {/* ─── Telegram Connect Card ──────────────────────────────────── */}
-      <TelegramCard
-        chatId={profile?.chat_id ?? null}
-        linkToken={profile?.link_token ?? null}
-      />
-
-      {/* ─── ESP32 Simulator (Mock Mode Only) ───────────────────────── */}
-      {isMockMode && device && (
-        <SimulatorPanel deviceId={device.id} onAction={refresh} />
-      )}
-
-      {/* Bottom spacing */}
-      <View style={styles.bottomSpacer} />
+              <Text style={[styles.activityTime, { color: colors.t3 }]}>
+                {getRelativeTime(event.detected_at)}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
     </ScrollView>
   );
 }
@@ -198,134 +154,137 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: AppColors.bgPrimary,
   },
   content: {
-    padding: Spacing.lg,
+    paddingBottom: 40,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: AppColors.bgPrimary,
-    gap: Spacing.md,
   },
-  loadingText: {
-    fontSize: FontSizes.md,
-    color: AppColors.textMuted,
+  
+  // Hero
+  heroSection: {
+    paddingTop: 60,
+    paddingBottom: 44,
+    alignItems: 'center',
+    borderBottomWidth: 1,
   },
-  greeting: {
-    fontSize: FontSizes.xl,
-    fontWeight: '700',
-    color: AppColors.textPrimary,
-    marginBottom: Spacing.lg,
+  liveIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  liveLabel: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  bigStatusWord: {
+    fontFamily: 'JetBrainsMono_700Bold',
+    fontSize: 48,
+    letterSpacing: -0.02 * 48,
+  },
+  heroSubtitle: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    lineHeight: 13 * 1.6,
+    marginTop: 12,
   },
 
-  // Status Cards
-  statusRow: {
+  // Stats
+  statsRow: {
     flexDirection: 'row',
-    gap: Spacing.md,
-    marginBottom: Spacing.sm,
+    borderBottomWidth: 1,
   },
-  statusCard: {
+  statCell: {
     flex: 1,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
     alignItems: 'center',
-    paddingVertical: Spacing.xl,
-    gap: Spacing.sm,
   },
-  statusCardIcon: {
-    fontSize: 36,
-    marginBottom: Spacing.xs,
+  verticalDivider: {
+    width: 1,
   },
-  statusCardLabel: {
-    fontSize: FontSizes.sm,
-    color: AppColors.textMuted,
-    fontWeight: '500',
+  statLabel: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    marginBottom: 8,
   },
-
-  // Last Detection
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  sectionIcon: {
+  statValue: {
+    fontFamily: 'JetBrainsMono_400Regular',
     fontSize: 18,
   },
-  sectionTitle: {
-    fontSize: FontSizes.md,
-    fontWeight: '700',
-    color: AppColors.textPrimary,
-  },
-  lastDetection: {
+
+  // Telegram
+  telegramRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingVertical: 20,
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    gap: 12,
   },
-  lastDetectionTime: {
-    fontSize: FontSizes.lg,
-    fontWeight: '600',
-    color: AppColors.textPrimary,
+  telegramTextCol: {
+    flex: 1,
   },
-  relativeTimeChip: {
-    backgroundColor: AppColors.accentBlue + '20',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
+  telegramStatus: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
+    marginBottom: 2,
   },
-  relativeTimeText: {
-    fontSize: FontSizes.sm,
-    fontWeight: '600',
-    color: AppColors.accentBlue,
-  },
-  noDataText: {
-    fontSize: FontSizes.sm,
-    color: AppColors.textMuted,
-    fontStyle: 'italic',
+  telegramHandle: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 11,
   },
 
-  // Recent Events
-  eventsList: {
-    gap: 0,
+  // Activity
+  activitySection: {
+    paddingTop: 28,
+    paddingHorizontal: 24,
+    paddingBottom: 32,
   },
-  eventItem: {
+  activityHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  eventItemBorder: {
+  activityTitle: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  viewAllLink: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
     borderBottomWidth: 1,
-    borderBottomColor: AppColors.divider,
   },
-  eventLeft: {
+  activityRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.md,
+    gap: 12,
   },
-  eventIcon: {
-    fontSize: 20,
+  activityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  eventTitle: {
-    fontSize: FontSizes.sm,
-    fontWeight: '600',
+  activityEventLabel: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
   },
-  eventTime: {
-    fontSize: FontSizes.xs,
-    color: AppColors.textMuted,
-    marginTop: 1,
-  },
-  eventRelative: {
-    fontSize: FontSizes.xs,
-    color: AppColors.textMuted,
-    backgroundColor: AppColors.bgSecondary,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.sm,
-    overflow: 'hidden',
-  },
-  bottomSpacer: {
-    height: Spacing['3xl'],
+  activityTime: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 11,
   },
 });

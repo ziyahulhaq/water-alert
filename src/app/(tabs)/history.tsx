@@ -1,7 +1,4 @@
-// ─── Water History Screen ────────────────────────────────────────────────────
-// Scrollable vertical timeline of the last 50 water flow events
-
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -9,15 +6,17 @@ import {
   ScrollView,
   RefreshControl,
   ActivityIndicator,
+  TouchableOpacity,
 } from 'react-native';
-import { TimelineItem } from '@/components/timeline-item';
 import { useDevice } from '@/hooks/use-device';
-import { getDateGroup } from '@/lib/time-utils';
-import { AppColors, FontSizes, Spacing } from '@/constants/theme';
+import { useTheme } from '@/theme/ThemeContext';
 
 export default function HistoryScreen() {
   const { allEvents, loading, refresh } = useDevice();
-  const [refreshing, setRefreshing] = React.useState(false);
+  const { colors } = useTheme();
+  const [refreshing, setRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 10;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -25,102 +24,111 @@ export default function HistoryScreen() {
     setRefreshing(false);
   }, [refresh]);
 
-  // Group events by date
-  const groupedEvents = useMemo(() => {
-    const groups: { label: string; events: typeof allEvents }[] = [];
-    let currentLabel = '';
-
-    for (const event of allEvents) {
-      const label = getDateGroup(event.detected_at);
-      if (label !== currentLabel) {
-        currentLabel = label;
-        groups.push({ label, events: [] });
-      }
-      groups[groups.length - 1].events.push(event);
-    }
-
-    return groups;
-  }, [allEvents]);
-
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={AppColors.accentBlue} />
-        <Text style={styles.loadingText}>Loading history...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.bg }]}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
+  const formatTime = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
+  
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const calculateDuration = (index: number) => {
+    if (index >= allEvents.length - 1) return '---';
+    const current = new Date(allEvents[index].detected_at).getTime();
+    const prev = new Date(allEvents[index + 1].detected_at).getTime();
+    const diffMins = Math.floor((current - prev) / 60000);
+    if (diffMins < 60) return `${diffMins}m`;
+    const hrs = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    return `${hrs}h ${mins}m`;
+  };
+
+  const totalPages = Math.ceil(allEvents.length / itemsPerPage);
+  const currentEvents = allEvents.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.bg }]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          tintColor={AppColors.accentBlue}
-          colors={[AppColors.accentBlue]}
-          progressBackgroundColor={AppColors.bgSecondary}
+          tintColor={colors.accent}
+          colors={[colors.accent]}
+          progressBackgroundColor={colors.surface}
         />
       }>
-      {/* Header Stats */}
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{allEvents.length}</Text>
-          <Text style={styles.statLabel}>Total Events</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>
-            {allEvents.filter((e) => e.event_type === 'arrived').length}
-          </Text>
-          <Text style={[styles.statLabel, { color: AppColors.emerald }]}>
-            Arrivals
-          </Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>
-            {allEvents.filter((e) => e.event_type === 'stopped').length}
-          </Text>
-          <Text style={[styles.statLabel, { color: AppColors.textMuted }]}>
-            Stops
-          </Text>
-        </View>
+      
+      {/* Table Header */}
+      <View style={[styles.tableHeader, { borderBottomColor: colors.hair }]}>
+        <Text style={[styles.headerCell, styles.col1, { color: colors.t3 }]}>TIME ↑↓</Text>
+        <Text style={[styles.headerCell, styles.col2, { color: colors.t3 }]}>EVENT</Text>
+        <Text style={[styles.headerCell, styles.col3, { color: colors.t3 }]}>DUR ↑↓</Text>
       </View>
 
-      {/* Timeline */}
-      {groupedEvents.length > 0 ? (
-        groupedEvents.map((group) => (
-          <View key={group.label} style={styles.dateGroup}>
-            <View style={styles.dateHeader}>
-              <View style={styles.dateLine} />
-              <Text style={styles.dateLabel}>{group.label}</Text>
-              <View style={styles.dateLine} />
+      {/* Table Rows */}
+      {currentEvents.length > 0 ? (
+        currentEvents.map((event, index) => {
+          const globalIndex = (page - 1) * itemsPerPage + index;
+          const isArrived = event.event_type === 'arrived';
+          return (
+            <View key={event.id} style={[styles.tableRow, { borderBottomColor: colors.divider }]}>
+              {/* Col 1 */}
+              <View style={styles.col1}>
+                <Text style={[styles.timeText, { color: colors.t1 }]}>{formatTime(event.detected_at)}</Text>
+                <Text style={[styles.dateText, { color: colors.t4 }]}>{formatDate(event.detected_at)}</Text>
+              </View>
+              {/* Col 2 */}
+              <View style={[styles.col2, styles.eventCol]}>
+                <View style={[styles.eventDot, { backgroundColor: isArrived ? colors.accent : colors.alert }]} />
+                <Text style={[styles.eventLabel, { color: colors.t1 }]}>
+                  {isArrived ? 'Water arrived' : 'Water stopped'}
+                </Text>
+              </View>
+              {/* Col 3 */}
+              <View style={styles.col3}>
+                <Text style={[styles.durText, { color: colors.t2 }]}>{calculateDuration(globalIndex)}</Text>
+              </View>
             </View>
-            {group.events.map((event, index) => (
-              <TimelineItem
-                key={event.id}
-                event={event}
-                isLast={index === group.events.length - 1}
-              />
-            ))}
-          </View>
-        ))
+          )
+        })
       ) : (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>📭</Text>
-          <Text style={styles.emptyTitle}>No History Yet</Text>
-          <Text style={styles.emptyText}>
-            Water supply events will appear here once your device starts
-            reporting.
-          </Text>
+          <Text style={[styles.emptyText, { color: colors.t3 }]}>No events recorded yet.</Text>
         </View>
       )}
 
-      <View style={styles.bottomSpacer} />
+      {/* Pagination Row */}
+      {allEvents.length > 0 && (
+        <View style={styles.paginationRow}>
+          <TouchableOpacity 
+            disabled={page === 1} 
+            onPress={() => setPage(p => Math.max(1, p - 1))}
+          >
+            <Text style={[styles.pageButton, { color: page === 1 ? colors.disabled : colors.t1 }]}>← Prev</Text>
+          </TouchableOpacity>
+          <Text style={[styles.pageIndicator, { color: colors.t3 }]}>Page {page} of {totalPages || 1}</Text>
+          <TouchableOpacity 
+            disabled={page === totalPages} 
+            onPress={() => setPage(p => Math.min(totalPages, p + 1))}
+          >
+            <Text style={[styles.pageButton, { color: page === totalPages ? colors.disabled : colors.t1 }]}>Next →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      
     </ScrollView>
   );
 }
@@ -128,100 +136,101 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: AppColors.bgPrimary,
   },
   content: {
-    padding: Spacing.lg,
+    paddingTop: 28,
+    paddingHorizontal: 24,
+    paddingBottom: 32,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: AppColors.bgPrimary,
-    gap: Spacing.md,
   },
-  loadingText: {
-    fontSize: FontSizes.md,
-    color: AppColors.textMuted,
+  
+  // Table Layout
+  tableHeader: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    paddingBottom: 10,
+    marginBottom: 0, // Rows handle their own padding
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  headerCell: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  col1: {
+    width: 92,
+    paddingRight: 10,
+  },
+  col2: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  col3: {
+    width: 72,
+    textAlign: 'right',
+    alignItems: 'flex-end',
   },
 
-  // Stats Row
-  statsRow: {
-    flexDirection: 'row',
-    backgroundColor: AppColors.bgCard,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: AppColors.bgCardBorder,
-    padding: Spacing.lg,
-    marginBottom: Spacing.xl,
-    alignItems: 'center',
+  // Cell Content
+  timeText: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 13,
   },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: FontSizes['2xl'],
-    fontWeight: '800',
-    color: AppColors.textPrimary,
-  },
-  statLabel: {
-    fontSize: FontSizes.xs,
-    fontWeight: '500',
-    color: AppColors.textSecondary,
+  dateText: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 10,
     marginTop: 2,
   },
-  statDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: AppColors.divider,
-  },
-
-  // Date Groups
-  dateGroup: {
-    marginBottom: Spacing.md,
-  },
-  dateHeader: {
+  eventCol: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
-    gap: Spacing.md,
+    gap: 8,
   },
-  dateLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: AppColors.divider,
+  eventDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  dateLabel: {
-    fontSize: FontSizes.sm,
-    fontWeight: '700',
-    color: AppColors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+  eventLabel: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+  },
+  durText: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 12,
   },
 
-  // Empty State
   emptyContainer: {
+    paddingVertical: 40,
     alignItems: 'center',
-    paddingVertical: Spacing['5xl'],
-    gap: Spacing.md,
-  },
-  emptyIcon: {
-    fontSize: 48,
-  },
-  emptyTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: '700',
-    color: AppColors.textPrimary,
   },
   emptyText: {
-    fontSize: FontSizes.sm,
-    color: AppColors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-    maxWidth: 260,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
   },
-  bottomSpacer: {
-    height: Spacing['3xl'],
+
+  // Pagination
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 26,
+  },
+  pageButton: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+  },
+  pageIndicator: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 12,
   },
 });

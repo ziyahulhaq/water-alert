@@ -24,13 +24,10 @@ function waterLevelToNumeric(level: string | undefined): number {
 //  Firebase Cloud Messaging (FCM) HTTP v1 API
 // ══════════════════════════════════════════════════════════════
 
-<<<<<<< HEAD
 /**
  * Obtain an OAuth2 access token for Firebase Cloud Messaging
  * using the service-account credentials stored in Edge Function secrets.
  */
-=======
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
 async function getFirebaseAccessToken(): Promise<{ token: string; expiry: number }> {
   const clientEmail = Deno.env.get("FIREBASE_CLIENT_EMAIL")!;
   const privateKey  = Deno.env.get("FIREBASE_PRIVATE_KEY")!.replace(/\\n/g, "\n");
@@ -53,7 +50,6 @@ let firebaseTokenExpiry = 0;
 
 async function getCachedFirebaseAccessToken(): Promise<string> {
   const refreshBufferMs = 5 * 60 * 1000;
-<<<<<<< HEAD
 
   if (firebaseAccessToken && Date.now() < firebaseTokenExpiry - refreshBufferMs) {
     return firebaseAccessToken;
@@ -70,17 +66,6 @@ async function getCachedFirebaseAccessToken(): Promise<string> {
  * Send a single FCM notification via the HTTP v1 API.
  * Returns the JSON response from Firebase.
  */
-=======
-  if (firebaseAccessToken && Date.now() < firebaseTokenExpiry - refreshBufferMs) {
-    return firebaseAccessToken;
-  }
-  const { token, expiry } = await getFirebaseAccessToken();
-  firebaseAccessToken = token;
-  firebaseTokenExpiry = expiry;
-  return token;
-}
-
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
 async function sendFCMNotification(
   accessToken: string,
   projectId: string,
@@ -96,7 +81,6 @@ async function sendFCMNotification(
     notification: { title, body },
     android: {
       priority: "HIGH",
-<<<<<<< HEAD
       notification: {
         channel_id: "water_alerts",
         sound: "default",
@@ -122,17 +106,6 @@ async function sendFCMNotification(
       Authorization:  `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-=======
-      notification: { channel_id: "water_alerts", sound: "default" },
-    },
-    apns: { payload: { aps: { sound: "default" } } },
-  };
-  if (data) message.data = data;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
     body: JSON.stringify({ message }),
   });
 
@@ -140,12 +113,6 @@ async function sendFCMNotification(
   return { success: res.ok, response: result };
 }
 
-<<<<<<< HEAD
-// ─────────────────────────────────────────────────────────────
-serve(async (req: Request) => {
-
-  // ── Handle CORS preflight ──────────────────────────────────
-=======
 // ══════════════════════════════════════════════════════════════
 //  Telegram Bot API
 // ══════════════════════════════════════════════════════════════
@@ -202,15 +169,12 @@ function buildTelegramMessage(eventType: string, waterLevel: string | undefined)
 // ─────────────────────────────────────────────────────────────
 serve(async (req: Request) => {
 
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
+  // ── Handle CORS preflight ──────────────────────────────────
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS });
   }
 
-<<<<<<< HEAD
   // ── Only accept POST ───────────────────────────────────────
-=======
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
   if (req.method !== "POST") {
     return new Response(
       JSON.stringify({ ok: false, error: "Method not allowed — use POST" }),
@@ -218,10 +182,7 @@ serve(async (req: Request) => {
     );
   }
 
-<<<<<<< HEAD
   // ── Parse body ────────────────────────────────────────────
-=======
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -232,28 +193,17 @@ serve(async (req: Request) => {
     );
   }
 
-<<<<<<< HEAD
   // ── Extract & validate fields ─────────────────────────────
   // Accept both mac_hash and mac_id for backward compatibility with older ESP32 code
   let macHash = (body.mac_hash as string | undefined)?.trim();
   if (!macHash) {
     macHash = (body.mac_id as string | undefined)?.trim() ?? "";
   }
-  
-  const sensorVal  = body.sensor_value as number | undefined;
-  const waterLevel = body.water_level  as string | undefined;
-  const uptimeSec  = body.uptime_sec   as number | undefined;
-  const detectedAt = body.detected_at  as string | undefined;   // ISO 8601
-=======
-  // Accept both mac_hash and mac_id for backward compatibility
-  let macHash = (body.mac_hash as string | undefined)?.trim();
-  if (!macHash) macHash = (body.mac_id as string | undefined)?.trim() ?? "";
 
   const sensorVal  = body.sensor_value as number | undefined;
   const waterLevel = body.water_level  as string | undefined;
   const uptimeSec  = body.uptime_sec   as number | undefined;
-  const detectedAt = body.detected_at  as string | undefined;
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
+  const detectedAt = body.detected_at  as string | undefined;   // ISO 8601
   const eventType  = (body.event_type  as string | undefined) ?? "arrived";
 
   if (!macHash) {
@@ -263,27 +213,18 @@ serve(async (req: Request) => {
     );
   }
 
-<<<<<<< HEAD
   console.log("[ESP32] Received payload:", {
     macHash, sensorVal, waterLevel, uptimeSec, detectedAt, eventType
   });
 
   // ── Supabase admin client (uses service role key — bypasses RLS) ──
-=======
-  console.log("[ESP32] Received payload:", { macHash, sensorVal, waterLevel, uptimeSec, detectedAt, eventType });
-
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     { auth: { persistSession: false } }
   );
 
-<<<<<<< HEAD
   // ── Step 1: Look up existing device by mac_hash ───────────
-=======
-  // ── Step 1: Look up / upsert device ──────────────────────
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
   const { data: existingDevice, error: lookupError } = await supabase
     .from("devices")
     .select("id, mac_hash")
@@ -299,26 +240,19 @@ serve(async (req: Request) => {
   }
 
   let deviceId: string;
-<<<<<<< HEAD
 
   // ── Derive model_id from MAC (matches firmware: "WD" + last 6 hex chars) ──
-=======
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
   const macClean = macHash.replace(/[^a-fA-F0-9]/g, "").toUpperCase();
   const modelId  = "WD" + macClean.slice(-6);
 
   if (existingDevice) {
-<<<<<<< HEAD
     // ── Device found by mac_hash — just update last_seen ─────
-=======
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
     deviceId = existingDevice.id;
     await supabase
       .from("devices")
       .update({ status: "online", last_seen: new Date().toISOString() })
       .eq("id", deviceId);
     console.log("[DB] Device updated. id=", deviceId);
-<<<<<<< HEAD
 
   } else {
     // ── Not found by mac_hash — upsert on model_id ───────────
@@ -333,21 +267,12 @@ serve(async (req: Request) => {
           last_seen: new Date().toISOString(),
         },
         { onConflict: "model_id", ignoreDuplicates: false }  // update on conflict
-=======
-  } else {
-    const { data: upserted, error: upsertError } = await supabase
-      .from("devices")
-      .upsert(
-        { mac_hash: macHash, model_id: modelId, status: "online", last_seen: new Date().toISOString() },
-        { onConflict: "model_id", ignoreDuplicates: false }
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
       )
       .select("id")
       .single();
 
     if (upsertError || !upserted) {
       console.error("[DB] Device upsert failed:", upsertError);
-<<<<<<< HEAD
       // Last resort: look up by model_id directly
       const { data: byModel } = await supabase
         .from("devices")
@@ -355,10 +280,6 @@ serve(async (req: Request) => {
         .eq("model_id", modelId)
         .maybeSingle();
 
-=======
-      const { data: byModel } = await supabase
-        .from("devices").select("id").eq("model_id", modelId).maybeSingle();
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
       if (!byModel) {
         return new Response(
           JSON.stringify({ ok: false, error: "Device upsert failed", detail: upsertError?.message }),
@@ -375,7 +296,6 @@ serve(async (req: Request) => {
 
   // ── Step 2: Insert water event ────────────────────────────
   const baseEventRow: Record<string, unknown> = {
-<<<<<<< HEAD
     device_id:    deviceId,
     water_level:  waterLevelToNumeric(waterLevel),
     detected_at:  detectedAt ?? new Date().toISOString(),
@@ -395,47 +315,27 @@ serve(async (req: Request) => {
   }
 
   let eventData, eventError;
-  
+
   // Try inserting with all extra columns first
-  const res = await supabase
+  const insertRes = await supabase
     .from("water_events")
     .insert(fullEventRow)
     .select("id")
     .single();
-    
-  eventData = res.data;
-  eventError = res.error;
+
+  eventData  = insertRes.data;
+  eventError = insertRes.error;
 
   // If it failed because the extra columns don't exist yet, retry with base columns
-  if (eventError && eventError.code === '42703') { // 42703 is Postgres code for "undefined_column"
+  if (eventError && eventError.code === "42703") { // 42703 is Postgres code for "undefined_column"
     console.warn("[DB] Extra columns not found in water_events. Retrying with base columns only.");
     const retryRes = await supabase
       .from("water_events")
       .insert(baseEventRow)
       .select("id")
       .single();
-      
-    eventData = retryRes.data;
-=======
-    device_id:   deviceId,
-    water_level: waterLevelToNumeric(waterLevel),
-    detected_at: detectedAt ?? new Date().toISOString(),
-  };
-  const fullEventRow = { ...baseEventRow };
-  if (uptimeSec !== undefined && uptimeSec !== null) fullEventRow.uptime_sec = uptimeSec;
-  if (eventType) fullEventRow.event_type = eventType;
-  if (sensorVal !== undefined && sensorVal !== null) fullEventRow.sensor_value = sensorVal;
 
-  let eventData, eventError;
-  const insertRes = await supabase.from("water_events").insert(fullEventRow).select("id").single();
-  eventData  = insertRes.data;
-  eventError = insertRes.error;
-
-  if (eventError && eventError.code === "42703") {
-    console.warn("[DB] Extra columns not found. Retrying with base columns only.");
-    const retryRes = await supabase.from("water_events").insert(baseEventRow).select("id").single();
     eventData  = retryRes.data;
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
     eventError = retryRes.error;
   }
 
@@ -449,21 +349,13 @@ serve(async (req: Request) => {
 
   console.log("[DB] Water event saved. event_id=", eventData.id);
 
-<<<<<<< HEAD
   // ── Step 3: Duplicate detection — only notify on state change ──
-=======
-  // ── Step 3: Notify only on state change ──────────────────
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
   try {
     const { data: previousEvent } = await supabase
       .from("water_events")
       .select("event_type")
       .eq("device_id", deviceId)
-<<<<<<< HEAD
       .neq("id", eventData.id)            // exclude the event we just inserted
-=======
-      .neq("id", eventData.id)
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -471,7 +363,6 @@ serve(async (req: Request) => {
     const previousEventType = previousEvent?.event_type as string | undefined;
 
     if (previousEventType && previousEventType === eventType) {
-<<<<<<< HEAD
       console.log(
         `[Notify] Skipping — no state change (previous: ${previousEventType}, current: ${eventType})`
       );
@@ -481,13 +372,6 @@ serve(async (req: Request) => {
       );
 
       // ── Step 3a: Find users linked to this device ──────────
-=======
-      console.log(`[Notify] Skipping — no state change (${previousEventType} → ${eventType})`);
-    } else {
-      console.log(`[Notify] State changed (${previousEventType ?? "none"} → ${eventType}). Sending notifications…`);
-
-      // ── Step 3a: Find users linked to this device ─────────
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
       const { data: userLinks, error: linkError } = await supabase
         .from("user_device")
         .select("user_id")
@@ -501,8 +385,31 @@ serve(async (req: Request) => {
         const userIds = userLinks.map((row: { user_id: string }) => row.user_id);
         console.log(`[Notify] Found ${userIds.length} linked user(s).`);
 
-<<<<<<< HEAD
-        // ── Step 3b: Fetch FCM tokens for those users ─────────
+        // ── Step 3b: Build notification content ──────────────
+        const isArrived = eventType === "arrived";
+        const title = isArrived
+          ? "💧 Water Available"
+          : "🚰 Water Supply Stopped";
+        const levelText = (() => {
+          switch ((waterLevel ?? "NO_WATER").toUpperCase()) {
+            case "WATER_HIGH": return "HIGH";
+            case "WATER_MED":  return "MEDIUM";
+            case "WATER_LOW":  return "LOW";
+            case "NO_WATER":   return "NO WATER";
+            default:           return (waterLevel ?? "NO_WATER").replace(/_/g, " ").toUpperCase();
+          }
+        })();
+        const notifBody = isArrived
+          ? `Water has arrived.\nLevel: ${levelText}`
+          : "Municipal water supply has stopped.";
+
+        const notifData: Record<string, string> = {
+          event_type:  eventType,
+          water_level: waterLevel ?? "NO_WATER",
+          device_id:   deviceId,
+        };
+
+        // ── Step 3c: Fetch FCM tokens for those users ─────────
         let { data: tokenRows, error: tokenError } = await supabase
           .from("mobile_push_tokens")
           .select("id, fcm_token, user_id")
@@ -516,192 +423,90 @@ serve(async (req: Request) => {
             .select("id, fcm_token, user_id")
             .in("user_id", userIds);
 
-          tokenRows = retryTokens.data;
+          tokenRows  = retryTokens.data;
           tokenError = retryTokens.error;
         }
 
-        if (tokenError) {
-          console.warn("[Notify] Could not fetch FCM tokens:", tokenError.message);
-        } else if (!tokenRows || tokenRows.length === 0) {
-          console.log("[Notify] No FCM tokens found for linked users.");
-        } else {
-          console.log(`[Notify] Sending to ${tokenRows.length} FCM token(s) for device=${deviceId} event_type=${eventType}`);
-
-          // ── Step 3c: Build notification content ──────────────
-          const isArrived = eventType === "arrived";
-          const title = isArrived
-            ? "💧 Water Available"
-            : "🚰 Water Supply Stopped";
-          const levelText = (() => {
-            switch ((waterLevel ?? "NO_WATER").toUpperCase()) {
-              case "WATER_HIGH": return "HIGH";
-              case "WATER_MED":  return "MEDIUM";
-              case "WATER_LOW":  return "LOW";
-              case "NO_WATER":   return "NO WATER";
-              default:           return (waterLevel ?? "NO_WATER").replace(/_/g, " ").toUpperCase();
-            }
-          })();
-          const notifBody = isArrived
-            ? `Water has arrived.\nLevel: ${levelText}`
-            : "Municipal water supply has stopped.";
-
-          const notifData: Record<string, string> = {
-            event_type:  eventType,
-            water_level: waterLevel ?? "NO_WATER",
-            device_id:   deviceId,
-          };
-
-          // ── Step 3d: Authenticate with Firebase ──────────────
-          const projectId  = Deno.env.get("FIREBASE_PROJECT_ID")!;
-          const accessToken = await getCachedFirebaseAccessToken();
-
-          // ── Step 3e: Fan-out FCM notifications ───────────────
-          const expiredTokenIds: string[] = [];
-
-          let sentCount = 0;
-          let failedCount = 0;
-
-          await Promise.allSettled(
-            tokenRows.map(async (row: { id: string; fcm_token: string; user_id: string }) => {
-              const tokenPrefix = row.fcm_token.slice(0, 12) + "…";
-              try {
-                const { success, response } = await sendFCMNotification(
-                  accessToken,
-                  projectId,
-                  row.fcm_token,
-                  title,
-                  notifBody,
-                  notifData,
-                );
-
-                if (success) {
-                  sentCount++;
-                  console.log(
-                    `[FCM] ✓ device=${deviceId} user=${row.user_id} token=${tokenPrefix} event=${eventType}`,
-                    JSON.stringify(response),
-                  );
-                } else {
-                  failedCount++;
-                  console.error(
-                    `[FCM] ✗ device=${deviceId} user=${row.user_id} token=${tokenPrefix} event=${eventType}`,
-                    JSON.stringify(response),
-                  );
-
-                  // If the token is invalid/unregistered, mark for cleanup
-                  const err = response as { error?: { status?: string; details?: Array<{ errorCode?: string }> } };
-                  const errorCode = err?.error?.details?.[0]?.errorCode;
-                  if (
-                    errorCode === "UNREGISTERED" ||
-                    errorCode === "INVALID_ARGUMENT" ||
-                    err?.error?.status === "NOT_FOUND"
-                  ) {
-                    expiredTokenIds.push(row.id);
-                    console.warn(`[FCM] Token marked for removal: id=${row.id} reason=${errorCode ?? err?.error?.status}`);
-                  }
-                }
-              } catch (fcmErr) {
-                failedCount++;
-                console.error(`[FCM] Exception for token=${tokenPrefix} user=${row.user_id}:`, fcmErr);
-              }
-            })
-          );
-
-          console.log(
-            `[FCM] Summary: sent=${sentCount} failed=${failedCount} expired=${expiredTokenIds.length} total=${tokenRows.length}`
-          );
-
-          // ── Clean up expired/invalid tokens ──────────────────
-          if (expiredTokenIds.length > 0) {
-            await supabase
-              .from("mobile_push_tokens")
-              .delete()
-              .in("id", expiredTokenIds);
-            console.log("[FCM] Removed", expiredTokenIds.length, "expired token(s).");
-          }
-=======
-        // ── Step 3b: Build notification content ──────────────
-        const isArrived = eventType === "arrived";
-        const title = isArrived ? "💧 Water Available" : "🚰 Water Supply Stopped";
-        const levelText = (() => {
-          switch ((waterLevel ?? "NO_WATER").toUpperCase()) {
-            case "WATER_HIGH": return "HIGH";
-            case "WATER_MED":  return "MEDIUM";
-            case "WATER_LOW":  return "LOW";
-            default:           return "NO WATER";
-          }
-        })();
-        const notifBody = isArrived
-          ? `Water has arrived. Level: ${levelText}`
-          : "Municipal water supply has stopped.";
-
-        const notifData: Record<string, string> = {
-          event_type:  eventType,
-          water_level: waterLevel ?? "NO_WATER",
-          device_id:   deviceId,
-        };
-
-        // ── Step 3c: FCM fan-out ──────────────────────────────
+        // ── Step 3d: FCM fan-out ──────────────────────────────
         try {
-          let { data: tokenRows, error: tokenError } = await supabase
-            .from("mobile_push_tokens")
-            .select("id, fcm_token, user_id")
-            .eq("is_active", true)
-            .in("user_id", userIds);
-
-          if (tokenError && tokenError.code === "42703") {
-            console.warn("[FCM] is_active column missing. Retrying without filter.");
-            const retry = await supabase
-              .from("mobile_push_tokens")
-              .select("id, fcm_token, user_id")
-              .in("user_id", userIds);
-            tokenRows  = retry.data;
-            tokenError = retry.error;
-          }
-
           if (tokenError) {
-            console.warn("[FCM] Could not fetch tokens:", tokenError.message);
-          } else if (tokenRows && tokenRows.length > 0) {
-            console.log(`[FCM] Sending to ${tokenRows.length} token(s)…`);
+            console.warn("[Notify] Could not fetch FCM tokens:", tokenError.message);
+          } else if (!tokenRows || tokenRows.length === 0) {
+            console.log("[Notify] No FCM tokens found for linked users.");
+          } else {
+            console.log(`[Notify] Sending to ${tokenRows.length} FCM token(s) for device=${deviceId} event_type=${eventType}`);
 
+            // ── Authenticate with Firebase ──────────────────────
             const projectId   = Deno.env.get("FIREBASE_PROJECT_ID")!;
             const accessToken = await getCachedFirebaseAccessToken();
-            const expiredIds: string[] = [];
+
+            const expiredTokenIds: string[] = [];
+            let sentCount   = 0;
+            let failedCount = 0;
 
             await Promise.allSettled(
               tokenRows.map(async (row: { id: string; fcm_token: string; user_id: string }) => {
+                const tokenPrefix = row.fcm_token.slice(0, 12) + "…";
                 try {
                   const { success, response } = await sendFCMNotification(
-                    accessToken, projectId, row.fcm_token, title, notifBody, notifData,
+                    accessToken,
+                    projectId,
+                    row.fcm_token,
+                    title,
+                    notifBody,
+                    notifData,
                   );
-                  console.log(`[FCM] user=${row.user_id} success=${success}`, JSON.stringify(response));
 
-                  if (!success) {
+                  if (success) {
+                    sentCount++;
+                    console.log(
+                      `[FCM] ✓ device=${deviceId} user=${row.user_id} token=${tokenPrefix} event=${eventType}`,
+                      JSON.stringify(response),
+                    );
+                  } else {
+                    failedCount++;
+                    console.error(
+                      `[FCM] ✗ device=${deviceId} user=${row.user_id} token=${tokenPrefix} event=${eventType}`,
+                      JSON.stringify(response),
+                    );
+
+                    // If the token is invalid/unregistered, mark for cleanup
                     const err = response as { error?: { status?: string; details?: Array<{ errorCode?: string }> } };
                     const errorCode = err?.error?.details?.[0]?.errorCode;
                     if (
                       errorCode === "UNREGISTERED" ||
                       errorCode === "INVALID_ARGUMENT" ||
                       err?.error?.status === "NOT_FOUND"
-                    ) expiredIds.push(row.id);
+                    ) {
+                      expiredTokenIds.push(row.id);
+                      console.warn(`[FCM] Token marked for removal: id=${row.id} reason=${errorCode ?? err?.error?.status}`);
+                    }
                   }
-                } catch (e) {
-                  console.error("[FCM] Failed for token:", row.id, e);
+                } catch (fcmErr) {
+                  failedCount++;
+                  console.error(`[FCM] Exception for token=${tokenPrefix} user=${row.user_id}:`, fcmErr);
                 }
               })
             );
 
-            if (expiredIds.length > 0) {
-              await supabase.from("mobile_push_tokens").delete().in("id", expiredIds);
-              console.log("[FCM] Removed", expiredIds.length, "expired token(s).");
+            console.log(
+              `[FCM] Summary: sent=${sentCount} failed=${failedCount} expired=${expiredTokenIds.length} total=${tokenRows.length}`
+            );
+
+            // ── Clean up expired/invalid tokens ──────────────────
+            if (expiredTokenIds.length > 0) {
+              await supabase
+                .from("mobile_push_tokens")
+                .delete()
+                .in("id", expiredTokenIds);
+              console.log("[FCM] Removed", expiredTokenIds.length, "expired token(s).");
             }
-          } else {
-            console.log("[FCM] No tokens found for linked users.");
           }
         } catch (fcmErr) {
           console.error("[FCM] Fan-out error (non-fatal):", fcmErr);
         }
 
-        // ── Step 3d: Telegram fan-out ─────────────────────────
+        // ── Step 3e: Telegram fan-out ─────────────────────────
         try {
           const telegramBotToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
 
@@ -735,33 +540,21 @@ serve(async (req: Request) => {
           }
         } catch (tgErr) {
           console.error("[Telegram] Fan-out error (non-fatal):", tgErr);
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
         }
       }
     }
   } catch (notifyErr) {
-<<<<<<< HEAD
     // Never let notification errors block the success response to the ESP32
-    console.error("[Notify] FCM fan-out error (non-fatal):", notifyErr);
-=======
     console.error("[Notify] Fan-out error (non-fatal):", notifyErr);
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
   }
 
   // ── Step 4: Success response ──────────────────────────────
   return new Response(
     JSON.stringify({
-<<<<<<< HEAD
-      ok:        true,
-      event_id:  eventData.id,
-      device_id: deviceId,
-      mac_hash:  macHash,
-=======
       ok:         true,
       event_id:   eventData.id,
       device_id:  deviceId,
       mac_hash:   macHash,
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
       uptime_sec: uptimeSec ?? null,
       event_type: eventType,
     }),

@@ -1,315 +1,236 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Switch,
-  Platform,
+  TouchableOpacity,
   Alert,
-  RefreshControl,
+  Animated,
 } from 'react-native';
-import Constants from 'expo-constants';
-import { GlassCard } from '@/components/ui/glass-card';
-import { StatusBadge } from '@/components/ui/status-badge';
-import { GradientButton } from '@/components/ui/gradient-button';
-import { InputField } from '@/components/ui/input-field';
 import { useAuth } from '@/hooks/use-auth';
 import { useDevice } from '@/hooks/use-device';
-import { db, isMockMode } from '@/lib/storage-client';
-import { AppColors, BorderRadius, FontSizes, Spacing } from '@/constants/theme';
-import { getFCMToken } from '@/lib/notifications';
+import { useTheme } from '@/theme/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
+import { PulseDot } from '@/components/PulseDot';
 
-// Safely require expo-notifications to prevent crashing in Expo Go SDK 53+ on Android
-let Notifications: any = null;
-try {
-  Notifications = require('expo-notifications');
-} catch (e) {
-  console.warn('expo-notifications could not be initialized:', e);
-}
+const PillToggle = ({ value, onToggle, colors }: { value: boolean, onToggle: (v: boolean) => void, colors: any }) => {
+  const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: value ? 1 : 0,
+      duration: 150,
+      useNativeDriver: false,
+    }).start();
+  }, [value, anim]);
 
-// ─── Push Notification Status ────────────────────────────────────────────────
+  const bg = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['transparent', colors.accent + '33'], // semi transparent accent
+  });
 
-type PushStatus = 'Enabled' | 'Disabled' | 'Permission Denied' | 'Not Supported' | 'Loading';
+  const border = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [colors.t4, colors.accent],
+  });
 
-function getPushStatusColor(status: PushStatus): string {
-  switch (status) {
-    case 'Enabled': return AppColors.emerald;
-    case 'Disabled': return AppColors.amber;
-    case 'Permission Denied': return AppColors.danger;
-    case 'Not Supported': return AppColors.textMuted;
-    default: return AppColors.textMuted;
-  }
-}
+  const translate = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, 20],
+  });
+
+  const knobColor = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [colors.t3, colors.accent],
+  });
+
+  return (
+    <TouchableOpacity activeOpacity={0.8} onPress={() => onToggle(!value)}>
+      <Animated.View style={[styles.pillTrack, { backgroundColor: bg, borderColor: border }]}>
+        <Animated.View style={[styles.pillKnob, { backgroundColor: knobColor, transform: [{ translateX: translate }] }]} />
+      </Animated.View>
+    </TouchableOpacity>
+  );
+};
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
-  const { notificationSettings, profile, refresh } = useDevice();
+  const { device, profile } = useDevice();
+  const { colors, theme, isDark, setTheme } = useTheme();
 
-  const [pushStatus, setPushStatus] = useState<PushStatus>('Loading');
-  const [pushToken, setPushToken] = useState<string | null>(null);
-  const [enablingPush, setEnablingPush] = useState(false);
+  const [notifyArrives, setNotifyArrives] = useState(true);
+  const [notifyStops, setNotifyStops] = useState(true);
+  const [notifySummary, setNotifySummary] = useState(false);
+  const [quietExpanded, setQuietExpanded] = useState(false);
 
-  const [whatsappEnabled, setWhatsappEnabled] = useState(false);
-  const [whatsappNumber, setWhatsappNumber] = useState('');
-  const [whatsappError, setWhatsappError] = useState<string | null>(null);
-  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const telegramConnected = !!profile?.chat_id;
+  const linkToken = profile?.link_token || '123456';
+  
+  const isOnline = device?.status === 'online';
 
-  // ─── Check Push Permission on Mount ──────────────────────────────
-  useEffect(() => {
-    checkPushPermissions();
-  }, []);
+  const handleSignOut = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: signOut },
+    ]);
+  };
 
-  // ─── Load WhatsApp settings ──────────────────────────────────────
-  useEffect(() => {
-    if (notificationSettings) {
-      setWhatsappEnabled(notificationSettings.enabled);
-      setWhatsappNumber(notificationSettings.whatsapp_number ?? '');
-    }
-  }, [notificationSettings]);
-
-  useEffect(() => {
-    if (profile?.push_token) {
-      setPushToken(profile.push_token);
-    }
-  }, [profile]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await refresh();
-    await checkPushPermissions();
-    setRefreshing(false);
-  }, [refresh]);
-
-  async function checkPushPermissions() {
-    try {
-      if (Platform.OS === 'web' || !Notifications) {
-        setPushStatus('Not Supported');
-        return;
-      }
-
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status === 'granted') {
-        setPushStatus(profile?.push_token ? 'Enabled' : 'Disabled');
-      } else if (status === 'denied') {
-        setPushStatus('Permission Denied');
-      } else {
-        setPushStatus('Disabled');
-      }
-    } catch {
-      setPushStatus('Not Supported');
-    }
-  }
-
-  // ─── Enable Push Notifications (FCM — works on Android + iOS) ──────
-  async function handleEnablePush() {
-    try {
-      setEnablingPush(true);
-
-      // getFCMToken() internally calls messaging().requestPermission()
-      // which triggers the iOS permission dialog and Android permission
-      // on Android 13+. It returns null if permission is denied.
-      const token = await getFCMToken();
-
-      if (!token) {
-        setPushStatus('Permission Denied');
-        Alert.alert(
-          'Permission Denied',
-          Platform.OS === 'ios'
-            ? 'Please enable notifications in Settings → Smart Water Alert → Notifications.'
-            : 'Please enable notifications in your device settings.'
-        );
-        return;
-      }
-
-      setPushToken(token);
-
-      // Save FCM token to mobile_push_tokens (same table _layout.tsx uses)
-      if (user) {
-        const { error } = await db.from('mobile_push_tokens').upsert(
-          {
-            user_id: user.id,
-            fcm_token: token,
-            platform: Platform.OS,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
-        );
-        if (error) {
-          console.error('Error saving FCM token from settings:', error);
-        }
-      }
-
-      setPushStatus('Enabled');
-      Alert.alert('Success', 'Push notifications enabled! You will now receive water alerts.');
-    } catch (error) {
-      console.error('Push notification error:', error);
-      Alert.alert('Error', 'Failed to enable push notifications. Please try again.');
-    } finally {
-      setEnablingPush(false);
-    }
-  }
-
-  // ─── Save WhatsApp Settings ──────────────────────────────────────
-  async function handleSaveWhatsapp() {
-    setWhatsappError(null);
-
-    if (whatsappEnabled && whatsappNumber.trim()) {
-      // Validate phone number (basic E.164 format check)
-      const phoneRegex = /^\+[1-9]\d{6,14}$/;
-      if (!phoneRegex.test(whatsappNumber.trim())) {
-        setWhatsappError('Enter a valid number with country code (e.g., +1234567890)');
-        return;
-      }
-    }
-
-    try {
-      setSavingWhatsapp(true);
-      if (user) {
-        await db.from('notification_settings').upsert({
-          user_id: user.id,
-          whatsapp_number: whatsappNumber.trim() || null,
-          enabled: whatsappEnabled,
-        });
-      }
-      Alert.alert('Saved', 'WhatsApp settings updated.');
-    } catch {
-      Alert.alert('Error', 'Failed to save settings.');
-    } finally {
-      setSavingWhatsapp(false);
-    }
-  }
+  const handleCopy = () => {
+    Alert.alert('Copied', 'Command copied to clipboard!');
+  };
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.bg }]}
       contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={AppColors.accentBlue}
-          colors={[AppColors.accentBlue]}
-          progressBackgroundColor={AppColors.bgSecondary}
-        />
-      }>
-      {/* ─── Native Push Notifications ──────────────────────────────── */}
-      <GlassCard>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionIcon}>🔔</Text>
-          <Text style={styles.sectionTitle}>Push Notifications</Text>
+      showsVerticalScrollIndicator={false}>
+
+      {/* APPEARANCE */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: colors.t3 }]}>APPEARANCE</Text>
+        <View style={[styles.row, { borderBottomColor: colors.divider }]}>
+          <View style={styles.rowLeft}>
+            <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={19} color={colors.t2} />
+            <View>
+              <Text style={[styles.rowTitle, { color: colors.t1 }]}>Dark mode</Text>
+              <Text style={[styles.rowSub, { color: colors.t3 }]}>Using the dark theme</Text>
+            </View>
+          </View>
+          <PillToggle value={isDark} onToggle={(v) => setTheme(v ? 'dark' : 'light')} colors={colors} />
+        </View>
+      </View>
+
+      {/* DEVICE */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: colors.t3 }]}>DEVICE</Text>
+        
+        <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
+          <Text style={[styles.infoLabel, { color: colors.t2 }]}>Device ID</Text>
+          <Text style={[styles.infoValue, { color: colors.t1 }]}>{device?.id || 'WTR-01'}</Text>
         </View>
 
-        <View style={styles.statusRow}>
-          <Text style={styles.statusLabel}>Status</Text>
-          <StatusBadge
-            label={pushStatus}
-            color={getPushStatusColor(pushStatus)}
-            size="md"
-          />
+        <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
+          <Text style={[styles.infoLabel, { color: colors.t2 }]}>Status</Text>
+          <View style={styles.statusValContainer}>
+            <PulseDot color={isOnline ? colors.accent : colors.alert} size={6} />
+            <Text style={[styles.infoValue, { color: colors.t1 }]}>{isOnline ? 'Online' : 'Offline'}</Text>
+          </View>
         </View>
 
-        {pushToken && (
-          <View style={styles.tokenContainer}>
-            <Text style={styles.tokenLabel}>Push Token</Text>
-            <View style={styles.tokenBox}>
-              <Text style={styles.tokenValue} selectable numberOfLines={2}>
-                {pushToken}
-              </Text>
+        <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
+          <Text style={[styles.infoLabel, { color: colors.t2 }]}>Last sync</Text>
+          <Text style={[styles.infoValue, { color: colors.t1 }]}>
+            {device?.last_seen_at ? new Date(device.last_seen_at).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' }) : 'Never'}
+          </Text>
+        </View>
+      </View>
+
+      {/* TELEGRAM */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: colors.t3 }]}>TELEGRAM</Text>
+        {telegramConnected ? (
+          <View style={[styles.row, { borderBottomColor: colors.divider, paddingVertical: 16 }]}>
+            <View style={styles.rowLeft}>
+              <PulseDot color={colors.accent} size={6} />
+              <View>
+                <Text style={[styles.rowTitle, { color: colors.t1 }]}>Connected</Text>
+                <Text style={[styles.monoSub, { color: colors.t3 }]}>@waterbot</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={[styles.disconnectBtn, { borderColor: colors.alert }]}>
+              <Text style={[styles.disconnectText, { color: colors.alert }]}>Disconnect</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.telegramBox}>
+            <Text style={[styles.instructionText, { color: colors.t2 }]}>
+              Link your account by sending a message to <Text style={{color: colors.t1}}>@WaterAlertBot</Text> on Telegram.
+            </Text>
+            <View style={[styles.codeBlock, { backgroundColor: colors.surface, borderColor: colors.hair }]}>
+              <Text style={[styles.codeText, { color: colors.t1 }]}>/link {linkToken}</Text>
+              <TouchableOpacity onPress={handleCopy}>
+                <Text style={[styles.copyText, { color: colors.accent }]}>Copy</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={[styles.outlineBtn, { borderColor: colors.frame }]}>
+              <Text style={[styles.outlineBtnText, { color: colors.t1 }]}>I've sent the command</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* NOTIFICATIONS */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: colors.t3 }]}>NOTIFICATIONS</Text>
+        
+        <View style={[styles.row, { borderBottomColor: colors.divider }]}>
+          <View style={styles.rowLeft}>
+            <View>
+              <Text style={[styles.rowTitle, { color: colors.t1 }]}>Water arrives</Text>
+              <Text style={[styles.rowSub, { color: colors.t3, lineHeight: 16.5 }]}>Get notified when water starts flowing</Text>
+            </View>
+          </View>
+          <PillToggle value={notifyArrives} onToggle={setNotifyArrives} colors={colors} />
+        </View>
+
+        <View style={[styles.row, { borderBottomColor: colors.divider }]}>
+          <View style={styles.rowLeft}>
+            <View>
+              <Text style={[styles.rowTitle, { color: colors.t1 }]}>Water stops</Text>
+              <Text style={[styles.rowSub, { color: colors.t3, lineHeight: 16.5 }]}>Get notified when water stops</Text>
+            </View>
+          </View>
+          <PillToggle value={notifyStops} onToggle={setNotifyStops} colors={colors} />
+        </View>
+
+        <View style={[styles.row, { borderBottomColor: colors.divider }]}>
+          <View style={styles.rowLeft}>
+            <View>
+              <Text style={[styles.rowTitle, { color: colors.t1 }]}>Daily summary</Text>
+              <Text style={[styles.rowSub, { color: colors.t3, lineHeight: 16.5 }]}>Receive a summary every evening</Text>
+            </View>
+          </View>
+          <PillToggle value={notifySummary} onToggle={setNotifySummary} colors={colors} />
+        </View>
+
+        <TouchableOpacity 
+          style={[styles.row, { borderBottomColor: colors.divider }]} 
+          onPress={() => setQuietExpanded(!quietExpanded)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.rowLeft}>
+            <Text style={[styles.rowTitle, { color: colors.t1 }]}>Quiet hours</Text>
+          </View>
+          <Ionicons name={quietExpanded ? "chevron-up-outline" : "chevron-down-outline"} size={20} color={colors.t2} />
+        </TouchableOpacity>
+
+        {quietExpanded && (
+          <View style={[styles.quietExpandedBox, { borderBottomColor: colors.divider }]}>
+            <View style={styles.timePickerCol}>
+              <Text style={[styles.infoLabel, { color: colors.t2 }]}>FROM</Text>
+              <View style={[styles.timeBox, { backgroundColor: colors.surface, borderColor: colors.hair }]}>
+                <Text style={[styles.timeVal, { color: colors.t1 }]}>22:00</Text>
+              </View>
+            </View>
+            <View style={styles.timePickerCol}>
+              <Text style={[styles.infoLabel, { color: colors.t2 }]}>TO</Text>
+              <View style={[styles.timeBox, { backgroundColor: colors.surface, borderColor: colors.hair }]}>
+                <Text style={[styles.timeVal, { color: colors.t1 }]}>06:00</Text>
+              </View>
             </View>
           </View>
         )}
+      </View>
 
-        {pushStatus !== 'Enabled' && pushStatus !== 'Not Supported' && (
-          <GradientButton
-            title="Enable Notifications"
-            icon="🔔"
-            onPress={handleEnablePush}
-            loading={enablingPush}
-            style={styles.pushButton}
-          />
-        )}
-      </GlassCard>
+      {/* SIGN OUT */}
+      <TouchableOpacity 
+        style={[styles.signOutBtn, { borderColor: colors.frame }]} 
+        onPress={handleSignOut}
+        activeOpacity={0.7}>
+        <Text style={[styles.signOutText, { color: colors.t2 }]}>Sign Out</Text>
+      </TouchableOpacity>
 
-      {/* ─── WhatsApp Configuration ─────────────────────────────────── */}
-      <GlassCard>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionIcon}>💬</Text>
-          <Text style={styles.sectionTitle}>WhatsApp Notifications</Text>
-        </View>
-
-        <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>Enable WhatsApp alerts</Text>
-          <Switch
-            value={whatsappEnabled}
-            onValueChange={setWhatsappEnabled}
-            trackColor={{
-              false: AppColors.bgSecondary,
-              true: AppColors.emerald + '60',
-            }}
-            thumbColor={whatsappEnabled ? AppColors.emerald : AppColors.textMuted}
-          />
-        </View>
-
-        {whatsappEnabled && (
-          <InputField
-            label="Phone Number"
-            icon="📱"
-            placeholder="+1234567890"
-            value={whatsappNumber}
-            onChangeText={setWhatsappNumber}
-            keyboardType="phone-pad"
-            error={whatsappError}
-          />
-        )}
-
-        <GradientButton
-          title="Save WhatsApp Settings"
-          icon="💾"
-          onPress={handleSaveWhatsapp}
-          loading={savingWhatsapp}
-          variant="secondary"
-          colors={['#374151', '#4B5563']}
-          style={styles.saveButton}
-        />
-      </GlassCard>
-
-      {/* ─── Account Section ────────────────────────────────────────── */}
-      <GlassCard>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionIcon}>👤</Text>
-          <Text style={styles.sectionTitle}>Account</Text>
-        </View>
-
-        <View style={styles.accountInfo}>
-          <Text style={styles.accountLabel}>Email</Text>
-          <Text style={styles.accountValue}>{user?.email ?? '—'}</Text>
-        </View>
-
-        {isMockMode && (
-          <View style={styles.mockIndicator}>
-            <Text style={styles.mockText}>🧪 Running in Demo Mode</Text>
-          </View>
-        )}
-
-        <GradientButton
-          title="Sign Out"
-          icon="🚪"
-          onPress={() => {
-            Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Sign Out', style: 'destructive', onPress: signOut },
-            ]);
-          }}
-          variant="danger"
-          style={styles.signOutButton}
-        />
-      </GlassCard>
-
-      <View style={styles.bottomSpacer} />
     </ScrollView>
   );
 }
@@ -317,113 +238,171 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: AppColors.bgPrimary,
   },
   content: {
-    padding: Spacing.lg,
+    paddingTop: 28,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
   },
-
-  // Section Header
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.lg,
+  section: {
+    marginBottom: 32,
   },
-  sectionIcon: {
-    fontSize: 20,
-  },
-  sectionTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: '700',
-    color: AppColors.textPrimary,
-  },
-
-  // Push Notifications
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  statusLabel: {
-    fontSize: FontSizes.md,
-    color: AppColors.textSecondary,
-  },
-  tokenContainer: {
-    marginBottom: Spacing.lg,
-  },
-  tokenLabel: {
-    fontSize: FontSizes.xs,
-    color: AppColors.textMuted,
+  sectionLabel: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: Spacing.xs,
+    marginBottom: 12,
   },
-  tokenBox: {
-    backgroundColor: AppColors.bgSecondary,
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: AppColors.bgInputBorder,
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
   },
-  tokenValue: {
-    fontSize: FontSizes.xs,
-    fontFamily: 'monospace',
-    color: AppColors.accentBlueBright,
-  },
-  pushButton: {
-    marginTop: Spacing.sm,
-  },
-
-  // WhatsApp
-  toggleRow: {
+  rowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.lg,
+    gap: 12,
+    flex: 1,
   },
-  toggleLabel: {
-    fontSize: FontSizes.md,
-    color: AppColors.textSecondary,
+  rowTitle: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
   },
-  saveButton: {
-    marginTop: Spacing.sm,
+  rowSub: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  monoSub: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  
+  // Pill Toggle
+  pillTrack: {
+    width: 42,
+    height: 24,
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: 'center',
+  },
+  pillKnob: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
   },
 
-  // Account
-  accountInfo: {
-    marginBottom: Spacing.lg,
+  // Info Row (Device)
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
   },
-  accountLabel: {
-    fontSize: FontSizes.xs,
-    color: AppColors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: Spacing.xs,
+  infoLabel: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
   },
-  accountValue: {
-    fontSize: FontSizes.md,
-    color: AppColors.textPrimary,
-    fontWeight: '500',
+  infoValue: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 13,
   },
-  mockIndicator: {
-    backgroundColor: AppColors.amber + '15',
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.lg,
+  statusValContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  // Telegram Code Block
+  disconnectBtn: {
+    height: 38,
+    paddingHorizontal: 16,
+    borderRadius: 4,
     borderWidth: 1,
-    borderColor: AppColors.amber + '25',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  mockText: {
-    fontSize: FontSizes.sm,
-    color: AppColors.amber,
-    textAlign: 'center',
+  disconnectText: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 13,
   },
-  signOutButton: {
-    marginTop: Spacing.xs,
+  telegramBox: {
+    paddingVertical: 8,
   },
-  bottomSpacer: {
-    height: Spacing['3xl'],
+  instructionText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  codeBlock: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+  },
+  codeText: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 14,
+  },
+  copyText: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 13,
+  },
+  outlineBtn: {
+    height: 42,
+    borderWidth: 1,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  outlineBtnText: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 14,
+  },
+
+  // Quiet Hours
+  quietExpandedBox: {
+    flexDirection: 'row',
+    gap: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  timePickerCol: {
+    flex: 1,
+    gap: 8,
+  },
+  timeBox: {
+    height: 40,
+    borderWidth: 1,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timeVal: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 14,
+  },
+
+  // Sign Out
+  signOutBtn: {
+    height: 44,
+    borderWidth: 1,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  signOutText: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 13,
   },
 });

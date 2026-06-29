@@ -1,7 +1,7 @@
-// ─── Root Layout ─────────────────────────────────────────────────────────────
-// Main router wrapper with auth state gating and providers
-import { AppColors } from "@/constants/theme";
+import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
+import { ThemeProvider, useTheme } from "@/theme/ThemeContext";
 import {
   getFCMToken,
   initializeNotifications,
@@ -11,28 +11,43 @@ import {
 import { db } from "@/lib/storage-client";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
-import { Platform } from "react-native";
+import { useEffect, useCallback, useState } from "react";
+import { Platform, View, Animated } from "react-native";
 
-// ── Module-level notification init ───────────────────────────────────────────
-// Must run before React renders so the foreground handler is registered
-// before any notification can arrive.
+// Prevent the splash screen from auto-hiding before asset loading is complete.
+SplashScreen.preventAutoHideAsync();
+
 initializeNotifications();
 
 function AuthGate() {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const { colors, isDark } = useTheme();
+
+  // Root view background transition
+  const [bgAnim] = useState(new Animated.Value(0));
+
+  useEffect(() => {
+    Animated.timing(bgAnim, {
+      toValue: isDark ? 1 : 0,
+      duration: 250,
+      useNativeDriver: false,
+    }).start();
+  }, [isDark, bgAnim]);
+
+  const backgroundColor = bgAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [colors.bg, colors.bg] // we can just use dynamic colors for screenOptions. The transition is handled inside components or by changing contentStyle but it's simpler to just let React re-render.
+  });
 
   useEffect(() => {
     async function saveNotificationToken() {
       if (loading) return;
       if (!user) return;
-
       try {
         const token = await getFCMToken();
         if (!token) return;
-
         const { error } = await db.from("mobile_push_tokens").upsert(
           {
             user_id: user.id,
@@ -40,32 +55,19 @@ function AuthGate() {
             platform: Platform.OS,
             updated_at: new Date().toISOString(),
           },
-          {
-            onConflict: "user_id",
-          }
+          { onConflict: "user_id" }
         );
-
-        if (error) {
-          console.error("Error saving FCM token:", error);
-        } else {
-          console.log("Successfully saved FCM token for user:", user.id);
-        }
+        if (error) console.error("Error saving FCM token:", error);
       } catch (err) {
         console.error("Failed to initialize or save FCM token:", err);
       }
     }
-
     saveNotificationToken();
   }, [user, loading]);
 
-  // ── Notification listeners (foreground + tap) ──────────────────────────
   useEffect(() => {
-    // expo-notifications listeners (received + response)
     const cleanupExpoListeners = setupNotificationListeners();
-
-    // Firebase onMessage → schedule local notification in foreground
     const cleanupFirebaseListener = setupFirebaseForegroundListener();
-
     return () => {
       cleanupExpoListeners();
       cleanupFirebaseListener();
@@ -74,14 +76,10 @@ function AuthGate() {
 
   useEffect(() => {
     if (loading) return;
-
     const inAuthGroup = segments[0] === "(auth)";
-
     if (!user && !inAuthGroup) {
-      // Not signed in → redirect to login
       router.replace("/(auth)/login");
     } else if (user && inAuthGroup) {
-      // Signed in but on auth screen → redirect to dashboard
       router.replace("/(tabs)");
     }
   }, [user, loading, segments, router]);
@@ -90,7 +88,7 @@ function AuthGate() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: AppColors.bgPrimary },
+        contentStyle: { backgroundColor: colors.bg },
         animation: "fade",
       }}
     >
@@ -102,9 +100,9 @@ function AuthGate() {
           presentation: "modal",
           headerShown: true,
           headerTitle: "Pair Device",
-          headerStyle: { backgroundColor: AppColors.bgSecondary },
-          headerTintColor: AppColors.textPrimary,
-          headerTitleStyle: { fontWeight: "600" },
+          headerStyle: { backgroundColor: colors.surface },
+          headerTintColor: colors.t1,
+          headerTitleStyle: { fontWeight: "600", fontFamily: 'Poppins_600SemiBold' },
         }}
       />
     </Stack>
@@ -112,10 +110,35 @@ function AuthGate() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    'Poppins_300Light': require('@expo-google-fonts/poppins/300Light/Poppins_300Light.ttf'),
+    'Poppins_400Regular': require('@expo-google-fonts/poppins/400Regular/Poppins_400Regular.ttf'),
+    'Poppins_500Medium': require('@expo-google-fonts/poppins/500Medium/Poppins_500Medium.ttf'),
+    'Poppins_600SemiBold': require('@expo-google-fonts/poppins/600SemiBold/Poppins_600SemiBold.ttf'),
+    'Poppins_700Bold': require('@expo-google-fonts/poppins/700Bold/Poppins_700Bold.ttf'),
+    'JetBrainsMono_400Regular': require('@expo-google-fonts/jetbrains-mono/400Regular/JetBrainsMono_400Regular.ttf'),
+    'JetBrainsMono_500Medium': require('@expo-google-fonts/jetbrains-mono/500Medium/JetBrainsMono_500Medium.ttf'),
+    'JetBrainsMono_700Bold': require('@expo-google-fonts/jetbrains-mono/700Bold/JetBrainsMono_700Bold.ttf'),
+  });
+
+  const onLayoutRootView = useCallback(async () => {
+    if (fontsLoaded) {
+      await SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
   return (
-    <AuthProvider>
-      <StatusBar style="light" backgroundColor={AppColors.bgPrimary} />
-      <AuthGate />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+          <StatusBar style="auto" />
+          <AuthGate />
+        </View>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
