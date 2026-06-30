@@ -2,7 +2,7 @@
 // Fetches the user's linked devices, latest water events, and notification settings
 
 import { useCallback, useEffect, useState } from 'react';
-import { db, isMockMode, getSupabaseClient } from '@/lib/storage-client';
+import { db } from '@/lib/storage-client';
 import { useAuth } from './use-auth';
 import type { Device, WaterEvent, NotificationSettings, Profile } from '@/types/database';
 
@@ -109,39 +109,6 @@ export function useDevice(): DeviceData {
 
   useEffect(() => {
     fetchData();
-
-    if (!isMockMode) {
-      try {
-        const client = getSupabaseClient();
-        const channel = client
-          .channel('realtime-water-channel')
-          .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'water_events' },
-            (payload) => {
-              console.log('[Realtime] Water event changed:', payload);
-              fetchData();
-            }
-          )
-          .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'devices' },
-            (payload) => {
-              console.log('[Realtime] Device changed:', payload);
-              fetchData();
-            }
-          )
-          .subscribe((status) => {
-            console.log('[Realtime] Subscription status:', status);
-          });
-
-        return () => {
-          client.removeChannel(channel);
-        };
-      } catch (err) {
-        console.warn('[Realtime] Subscription setup failed:', err);
-      }
-    }
   }, [fetchData]);
 
   return {

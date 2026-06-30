@@ -37,7 +37,7 @@ export interface WaterEvent {
   water_level: number; // 0=No Water, 1=Low, 2=Medium, 3=High
   sensor_value: number;
   uptime_sec: number;
-  event_type: 'arrived' | 'stopped' | 'heartbeat';
+  event_type: 'arrived' | 'stopped';
   detected_at: string;
 }
 
@@ -64,4 +64,4 @@ export const WATER_LEVEL_COLORS: Record<number, string> = {
   3: '#10B981', // emerald
 };
 
-export type EventType = 'arrived' | 'stopped' | 'heartbeat';
+export type EventType = 'arrived' | 'stopped';

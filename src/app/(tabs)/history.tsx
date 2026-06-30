@@ -131,22 +131,7 @@ export default function HistoryScreen() {
       {/* Table Rows */}
       {sortedEvents.length > 0 ? (
         sortedEvents.map((event) => {
-          const type = event.event_type;
-          
-          let dotColor = colors.alert;
-          let eventLabelText = 'Water stopped';
-          
-          if (type === 'arrived') {
-            dotColor = colors.accent;
-            eventLabelText = 'Water arrived';
-          } else if (type === 'heartbeat') {
-            dotColor = colors.warning;
-            eventLabelText = 'Heartbeat';
-          } else if (type === 'stopped') {
-            dotColor = colors.alert;
-            eventLabelText = 'Water stopped';
-          }
-
+          const isArrived = event.event_type === 'arrived';
           return (
             <View key={event.id} style={[styles.tableRow, { borderBottomColor: colors.divider }]}>
               {/* Col 1 */}
@@ -156,9 +141,9 @@ export default function HistoryScreen() {
               </View>
               {/* Col 2 */}
               <View style={[styles.col2, styles.eventCol]}>
-                <View style={[styles.eventDot, { backgroundColor: dotColor }]} />
+                <View style={[styles.eventDot, { backgroundColor: isArrived ? colors.accent : colors.alert }]} />
                 <Text style={[styles.eventLabel, { color: colors.t1 }]}>
-                  {eventLabelText}
+                  {isArrived ? 'Water arrived' : 'Water stopped'}
                 </Text>
               </View>
               {/* Col 3 */}

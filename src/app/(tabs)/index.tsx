@@ -69,21 +69,9 @@ export default function DashboardScreen() {
   }
 
   // ── Device paired → full dashboard ───────────────────────────────────────
-  const lastEventType = latestEvent?.event_type || 'unknown';
-  
-  let statusColor = colors.alert;
-  let statusWord = 'STOPPED';
-  
-  if (lastEventType === 'arrived') {
-    statusColor = colors.accent;
-    statusWord = 'FLOWING';
-  } else if (lastEventType === 'heartbeat') {
-    statusColor = colors.warning;
-    statusWord = 'HEARTBEAT';
-  } else if (lastEventType === 'stopped') {
-    statusColor = colors.alert;
-    statusWord = 'STOPPED';
-  }
+  const waterAvailable = latestEvent?.event_type === 'arrived' && (latestEvent?.water_level ?? 0) > 0;
+  const statusColor = waterAvailable ? colors.accent : colors.alert;
+  const statusWord = waterAvailable ? 'FLOWING' : 'STOPPED';
 
   const formatHHMM = (isoString?: string) => {
     if (!isoString) return '--:--';
@@ -91,13 +79,7 @@ export default function DashboardScreen() {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
-  let timeLabel = 'STOPPED AT';
-  if (lastEventType === 'arrived') {
-    timeLabel = 'FLOWING SINCE';
-  } else if (lastEventType === 'heartbeat') {
-    timeLabel = 'LAST ACTIVE';
-  }
-
+  const timeLabel = waterAvailable ? 'FLOWING SINCE' : 'STOPPED AT';
   const timeValue = formatHHMM(latestEvent?.detected_at);
   const eventsCount = recentEvents.length;
   const deviceName = device?.model_id || 'WTR-01';
@@ -135,10 +117,9 @@ export default function DashboardScreen() {
           {statusWord}
         </Text>
         <Text style={[styles.heroSubtitle, { color: colors.t2 }]}>
-          {lastEventType === 'arrived' && `Water has been flowing for ${getRelativeTime(latestEvent?.detected_at || '').replace(' ago', '')}`}
-          {lastEventType === 'heartbeat' && `Last check-in ${getRelativeTime(latestEvent?.detected_at || '')}`}
-          {lastEventType === 'stopped' && `Water stopped ${getRelativeTime(latestEvent?.detected_at || '')}`}
-          {lastEventType === 'unknown' && `No events recorded`}
+          {waterAvailable 
+            ? `Water has been flowing for ${getRelativeTime(latestEvent?.detected_at || '').replace(' ago', '')}` 
+            : `Water stopped ${getRelativeTime(latestEvent?.detected_at || '')}`}
         </Text>
       </View>
 
@@ -202,22 +183,7 @@ export default function DashboardScreen() {
         </View>
 
         {recentEvents.slice(0, 4).map((event, index) => {
-          const type = event.event_type;
-          
-          let dotColor = colors.alert;
-          let eventLabelText = 'Water stopped';
-          
-          if (type === 'arrived') {
-            dotColor = colors.accent;
-            eventLabelText = 'Water arrived';
-          } else if (type === 'heartbeat') {
-            dotColor = colors.warning;
-            eventLabelText = 'Heartbeat';
-          } else if (type === 'stopped') {
-            dotColor = colors.alert;
-            eventLabelText = 'Water stopped';
-          }
-
+          const isArrived = event.event_type === 'arrived';
           return (
             <View 
               key={event.id} 
@@ -227,9 +193,9 @@ export default function DashboardScreen() {
               ]}
             >
               <View style={styles.activityRowLeft}>
-                <View style={[styles.activityDot, { backgroundColor: dotColor }]} />
+                <View style={[styles.activityDot, { backgroundColor: isArrived ? colors.accent : colors.alert }]} />
                 <Text style={[styles.activityEventLabel, { color: colors.t1 }]}>
-                  {eventLabelText}
+                  {isArrived ? 'Water arrived' : 'Water stopped'}
                 </Text>
               </View>
               <Text style={[styles.activityTime, { color: colors.t3 }]}>

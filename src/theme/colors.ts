@@ -6,7 +6,6 @@ export type ThemeColors = {
   hair: string;
   accent: string;
   alert: string;
-  warning: string;
   disabled: string;
   t1: string;
   t2: string;
@@ -22,7 +21,6 @@ export const darkTheme: ThemeColors = {
   hair: '#383838', // hsl(0,0%,22%)
   accent: '#00FFFE', // hsl(182,100%,50%)
   alert: '#B94C4C', // hsl(0,43%,51%)
-  warning: '#F59E0B', // hsl(38,92%,50%)
   disabled: 'rgba(214,214,214,0.22)', // hsla(0,0%,84%,0.22)
   t1: '#F5F5F5', // hsl(0,0%,96%)
   t2: 'rgba(214,214,214,0.7)', // hsla(0,0%,84%,0.7)
@@ -38,7 +36,6 @@ export const lightTheme: ThemeColors = {
   hair: '#D1D1D1', // hsl(0,0%,82%)
   accent: '#007A82', // hsl(186,95%,32%)
   alert: '#BF2D2D', // hsl(0,62%,47%)
-  warning: '#D97706', // hsl(35,92%,44%)
   disabled: 'rgba(30,30,30,0.25)', // hsla(0,0%,0%,0.25)
   t1: '#1C1C1C', // hsl(0,0%,11%)
   t2: 'rgba(30,30,30,0.62)', // hsla(0,0%,0%,0.62)
