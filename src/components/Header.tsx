@@ -3,16 +3,26 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '@/theme/ThemeContext';
 import { useDevice } from '@/hooks/use-device';
 import { PulseDot } from './PulseDot';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const Header: React.FC = () => {
   const { colors } = useTheme();
   const { device } = useDevice();
+  const insets = useSafeAreaInsets();
   const isOnline = device?.status === 'online';
   
   const statusColor = isOnline ? colors.accent : colors.alert;
 
   return (
-    <View style={[styles.header, { borderBottomColor: colors.frame, backgroundColor: colors.bg }]}>
+    <View style={[
+      styles.header, 
+      { 
+        borderBottomColor: colors.frame, 
+        backgroundColor: colors.bg,
+        paddingTop: insets.top,
+        height: 52 + insets.top
+      }
+    ]}>
       <Text style={[styles.title, { color: colors.t1 }]}>WATER ALERT</Text>
       <View style={styles.statusContainer}>
         <PulseDot color={statusColor} />

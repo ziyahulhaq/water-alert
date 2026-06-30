@@ -15,8 +15,8 @@ export default function HistoryScreen() {
   const { allEvents, loading, refresh } = useDevice();
   const { colors } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
-  const [page, setPage] = useState(1);
-  const itemsPerPage = 10;
+  const [sortKey, setSortKey] = useState<'time' | 'dur'>('time');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -42,19 +42,63 @@ export default function HistoryScreen() {
     return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const calculateDuration = (index: number) => {
-    if (index >= allEvents.length - 1) return '---';
-    const current = new Date(allEvents[index].detected_at).getTime();
-    const prev = new Date(allEvents[index + 1].detected_at).getTime();
-    const diffMins = Math.floor((current - prev) / 60000);
-    if (diffMins < 60) return `${diffMins}m`;
-    const hrs = Math.floor(diffMins / 60);
-    const mins = diffMins % 60;
-    return `${hrs}h ${mins}m`;
+  const formatDurationString = (mins: number) => {
+    if (mins <= 0) return '---';
+    if (mins < 60) return `${mins}m`;
+    const hrs = Math.floor(mins / 60);
+    const remainingMins = mins % 60;
+    return `${hrs}h ${remainingMins}m`;
   };
 
-  const totalPages = Math.ceil(allEvents.length / itemsPerPage);
-  const currentEvents = allEvents.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+  // 1. Calculate durations based on original chronological order (descending by detected_at)
+  const chronologicalEvents = React.useMemo(() => {
+    return [...allEvents].sort(
+      (a, b) => new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime()
+    );
+  }, [allEvents]);
+
+  const eventsWithDuration = React.useMemo(() => {
+    return chronologicalEvents.map((event, idx) => {
+      let durMins = 0;
+      if (idx < chronologicalEvents.length - 1) {
+        const current = new Date(event.detected_at).getTime();
+        const prev = new Date(chronologicalEvents[idx + 1].detected_at).getTime();
+        durMins = Math.max(0, Math.floor((current - prev) / 60000));
+      }
+      return {
+        ...event,
+        duration: durMins,
+      };
+    });
+  }, [chronologicalEvents]);
+
+  // 2. Sort events according to sortKey and sortDir
+  const sortedEvents = React.useMemo(() => {
+    return [...eventsWithDuration].sort((a, b) => {
+      let av = 0;
+      let bv = 0;
+      if (sortKey === 'dur') {
+        av = a.duration;
+        bv = b.duration;
+      } else {
+        av = new Date(a.detected_at).getTime();
+        bv = new Date(b.detected_at).getTime();
+      }
+      return sortDir === 'asc' ? av - bv : bv - av;
+    });
+  }, [eventsWithDuration, sortKey, sortDir]);
+
+  const handleSort = (key: 'time' | 'dur') => {
+    if (sortKey === key) {
+      setSortDir(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('desc');
+    }
+  };
+
+  const timeArrow = sortKey === 'time' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
+  const durArrow = sortKey === 'dur' ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
 
   return (
     <ScrollView
@@ -73,16 +117,36 @@ export default function HistoryScreen() {
       
       {/* Table Header */}
       <View style={[styles.tableHeader, { borderBottomColor: colors.hair }]}>
-        <Text style={[styles.headerCell, styles.col1, { color: colors.t3 }]}>TIME ↑↓</Text>
-        <Text style={[styles.headerCell, styles.col2, { color: colors.t3 }]}>EVENT</Text>
-        <Text style={[styles.headerCell, styles.col3, { color: colors.t3 }]}>DUR ↑↓</Text>
+        <TouchableOpacity style={styles.col1} onPress={() => handleSort('time')} activeOpacity={0.7}>
+          <Text style={[styles.headerCell, { color: colors.t3 }]}>TIME{timeArrow}</Text>
+        </TouchableOpacity>
+        <View style={styles.col2}>
+          <Text style={[styles.headerCell, { color: colors.t3 }]}>EVENT</Text>
+        </View>
+        <TouchableOpacity style={styles.col3} onPress={() => handleSort('dur')} activeOpacity={0.7}>
+          <Text style={[styles.headerCell, { color: colors.t3, textAlign: 'right' }]}>DUR{durArrow}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Table Rows */}
-      {currentEvents.length > 0 ? (
-        currentEvents.map((event, index) => {
-          const globalIndex = (page - 1) * itemsPerPage + index;
-          const isArrived = event.event_type === 'arrived';
+      {sortedEvents.length > 0 ? (
+        sortedEvents.map((event) => {
+          const type = event.event_type;
+          
+          let dotColor = colors.alert;
+          let eventLabelText = 'Water stopped';
+          
+          if (type === 'arrived') {
+            dotColor = colors.accent;
+            eventLabelText = 'Water arrived';
+          } else if (type === 'heartbeat') {
+            dotColor = colors.warning;
+            eventLabelText = 'Heartbeat';
+          } else if (type === 'stopped') {
+            dotColor = colors.alert;
+            eventLabelText = 'Water stopped';
+          }
+
           return (
             <View key={event.id} style={[styles.tableRow, { borderBottomColor: colors.divider }]}>
               {/* Col 1 */}
@@ -92,14 +156,14 @@ export default function HistoryScreen() {
               </View>
               {/* Col 2 */}
               <View style={[styles.col2, styles.eventCol]}>
-                <View style={[styles.eventDot, { backgroundColor: isArrived ? colors.accent : colors.alert }]} />
+                <View style={[styles.eventDot, { backgroundColor: dotColor }]} />
                 <Text style={[styles.eventLabel, { color: colors.t1 }]}>
-                  {isArrived ? 'Water arrived' : 'Water stopped'}
+                  {eventLabelText}
                 </Text>
               </View>
               {/* Col 3 */}
               <View style={styles.col3}>
-                <Text style={[styles.durText, { color: colors.t2 }]}>{calculateDuration(globalIndex)}</Text>
+                <Text style={[styles.durText, { color: colors.t2 }]}>{formatDurationString(event.duration)}</Text>
               </View>
             </View>
           )
@@ -107,25 +171,6 @@ export default function HistoryScreen() {
       ) : (
         <View style={styles.emptyContainer}>
           <Text style={[styles.emptyText, { color: colors.t3 }]}>No events recorded yet.</Text>
-        </View>
-      )}
-
-      {/* Pagination Row */}
-      {allEvents.length > 0 && (
-        <View style={styles.paginationRow}>
-          <TouchableOpacity 
-            disabled={page === 1} 
-            onPress={() => setPage(p => Math.max(1, p - 1))}
-          >
-            <Text style={[styles.pageButton, { color: page === 1 ? colors.disabled : colors.t1 }]}>← Prev</Text>
-          </TouchableOpacity>
-          <Text style={[styles.pageIndicator, { color: colors.t3 }]}>Page {page} of {totalPages || 1}</Text>
-          <TouchableOpacity 
-            disabled={page === totalPages} 
-            onPress={() => setPage(p => Math.min(totalPages, p + 1))}
-          >
-            <Text style={[styles.pageButton, { color: page === totalPages ? colors.disabled : colors.t1 }]}>Next →</Text>
-          </TouchableOpacity>
         </View>
       )}
       

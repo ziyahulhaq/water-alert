@@ -98,11 +98,7 @@ function AuthGate() {
         name="pair-device"
         options={{
           presentation: "modal",
-          headerShown: true,
-          headerTitle: "Pair Device",
-          headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.t1,
-          headerTitleStyle: { fontWeight: "600", fontFamily: 'Poppins_600SemiBold' },
+          headerShown: false,
         }}
       />
     </Stack>

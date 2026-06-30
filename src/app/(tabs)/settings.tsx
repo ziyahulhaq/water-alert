@@ -13,6 +13,9 @@ import { useDevice } from '@/hooks/use-device';
 import { useTheme } from '@/theme/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { PulseDot } from '@/components/PulseDot';
+import * as Clipboard from 'expo-clipboard';
+import { db } from '@/lib/storage-client';
+import { useRouter } from 'expo-router';
 
 const PillToggle = ({ value, onToggle, colors }: { value: boolean, onToggle: (v: boolean) => void, colors: any }) => {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
@@ -56,8 +59,9 @@ const PillToggle = ({ value, onToggle, colors }: { value: boolean, onToggle: (v:
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
-  const { device, profile } = useDevice();
+  const { device, profile, refresh } = useDevice();
   const { colors, theme, isDark, setTheme } = useTheme();
+  const router = useRouter();
 
   const [notifyArrives, setNotifyArrives] = useState(true);
   const [notifyStops, setNotifyStops] = useState(true);
@@ -65,7 +69,7 @@ export default function SettingsScreen() {
   const [quietExpanded, setQuietExpanded] = useState(false);
 
   const telegramConnected = !!profile?.chat_id;
-  const linkToken = profile?.link_token || '123456';
+  const linkToken = profile?.link_token ? profile.link_token.substring(0, 8).toUpperCase() : '123456';
   
   const isOnline = device?.status === 'online';
 
@@ -76,8 +80,52 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const handleCopy = () => {
-    Alert.alert('Copied', 'Command copied to clipboard!');
+  const handleCopy = async () => {
+    const cmd = `/link ${linkToken}`;
+    await Clipboard.setStringAsync(cmd);
+    Alert.alert('Copied', 'Telegram link command copied to clipboard!');
+  };
+
+  const handleDisconnectTelegram = async () => {
+    if (!user) return;
+    Alert.alert(
+      'Disconnect Telegram',
+      'Are you sure you want to disconnect Telegram alerts from your account?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await db
+                .from('profiles')
+                .update({ chat_id: null })
+                .eq('id', user.id);
+              if (error) {
+                Alert.alert('Error', error.message);
+              } else {
+                Alert.alert('Success', 'Telegram account disconnected.');
+                if (refresh) await refresh();
+              }
+            } catch (err) {
+              console.error(err);
+              Alert.alert('Error', 'An unexpected error occurred.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCheckTelegramLink = async () => {
+    if (refresh) {
+      await refresh();
+      Alert.alert(
+        'Checking Link Status',
+        'Checking if your Telegram account is linked. If not, make sure you sent the command to @WaterAlertBot.'
+      );
+    }
   };
 
   return (
@@ -94,7 +142,9 @@ export default function SettingsScreen() {
             <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={19} color={colors.t2} />
             <View>
               <Text style={[styles.rowTitle, { color: colors.t1 }]}>Dark mode</Text>
-              <Text style={[styles.rowSub, { color: colors.t3 }]}>Using the dark theme</Text>
+              <Text style={[styles.rowSub, { color: colors.t3 }]}>
+                {isDark ? 'Using the dark theme' : 'Using the light theme'}
+              </Text>
             </View>
           </View>
           <PillToggle value={isDark} onToggle={(v) => setTheme(v ? 'dark' : 'light')} colors={colors} />
@@ -106,24 +156,54 @@ export default function SettingsScreen() {
         <Text style={[styles.sectionLabel, { color: colors.t3 }]}>DEVICE</Text>
         
         <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
-          <Text style={[styles.infoLabel, { color: colors.t2 }]}>Device ID</Text>
-          <Text style={[styles.infoValue, { color: colors.t1 }]}>{device?.id || 'WTR-01'}</Text>
-        </View>
-
-        <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
-          <Text style={[styles.infoLabel, { color: colors.t2 }]}>Status</Text>
-          <View style={styles.statusValContainer}>
-            <PulseDot color={isOnline ? colors.accent : colors.alert} size={6} />
-            <Text style={[styles.infoValue, { color: colors.t1 }]}>{isOnline ? 'Online' : 'Offline'}</Text>
-          </View>
-        </View>
-
-        <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
-          <Text style={[styles.infoLabel, { color: colors.t2 }]}>Last sync</Text>
-          <Text style={[styles.infoValue, { color: colors.t1 }]}>
-            {device?.last_seen_at ? new Date(device.last_seen_at).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' }) : 'Never'}
+          <Text style={[styles.infoLabel, { color: colors.t2 }]}>Pairing Status</Text>
+          <Text style={[styles.infoValue, { color: device ? colors.accent : colors.t3, fontFamily: 'Poppins_600SemiBold' }]}>
+            {device ? 'Paired' : 'Not Paired'}
           </Text>
         </View>
+
+        {device && (
+          <>
+            <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
+              <Text style={[styles.infoLabel, { color: colors.t2 }]}>Device ID</Text>
+              <Text style={[styles.infoValue, { color: colors.t1, fontFamily: 'JetBrainsMono_400Regular' }]}>
+                {device.model_id || device.id}
+              </Text>
+            </View>
+
+            <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
+              <Text style={[styles.infoLabel, { color: colors.t2 }]}>Status</Text>
+              <View style={styles.statusValContainer}>
+                <PulseDot color={isOnline ? colors.accent : colors.alert} size={6} />
+                <Text style={[styles.infoValue, { color: colors.t1 }]}>{isOnline ? 'Online' : 'Offline'}</Text>
+              </View>
+            </View>
+
+            <View style={[styles.infoRow, { borderBottomColor: colors.divider }]}>
+              <Text style={[styles.infoLabel, { color: colors.t2 }]}>Last sync</Text>
+              <Text style={[styles.infoValue, { color: colors.t1 }]}>
+                {device?.last_seen ? new Date(device.last_seen).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' }) : 'Never'}
+              </Text>
+            </View>
+          </>
+        )}
+
+        {!device && (
+          <TouchableOpacity 
+            style={[styles.row, { borderBottomColor: colors.divider }]} 
+            onPress={() => router.push('/pair-device')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="bluetooth" size={19} color={colors.accent} />
+              <View>
+                <Text style={[styles.rowTitle, { color: colors.t1 }]}>Pair New Device</Text>
+                <Text style={[styles.rowSub, { color: colors.t3 }]}>Add and configure WTR-01 sensor</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward-outline" size={18} color={colors.t3} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* TELEGRAM */}
@@ -138,7 +218,11 @@ export default function SettingsScreen() {
                 <Text style={[styles.monoSub, { color: colors.t3 }]}>@waterbot</Text>
               </View>
             </View>
-            <TouchableOpacity style={[styles.disconnectBtn, { borderColor: colors.alert }]}>
+            <TouchableOpacity 
+              style={[styles.disconnectBtn, { borderColor: colors.alert }]}
+              onPress={handleDisconnectTelegram}
+              activeOpacity={0.7}
+            >
               <Text style={[styles.disconnectText, { color: colors.alert }]}>Disconnect</Text>
             </TouchableOpacity>
           </View>
@@ -149,11 +233,15 @@ export default function SettingsScreen() {
             </Text>
             <View style={[styles.codeBlock, { backgroundColor: colors.surface, borderColor: colors.hair }]}>
               <Text style={[styles.codeText, { color: colors.t1 }]}>/link {linkToken}</Text>
-              <TouchableOpacity onPress={handleCopy}>
+              <TouchableOpacity onPress={handleCopy} activeOpacity={0.7}>
                 <Text style={[styles.copyText, { color: colors.accent }]}>Copy</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity style={[styles.outlineBtn, { borderColor: colors.frame }]}>
+            <TouchableOpacity 
+              style={[styles.outlineBtn, { borderColor: colors.frame }]}
+              onPress={handleCheckTelegramLink}
+              activeOpacity={0.7}
+            >
               <Text style={[styles.outlineBtnText, { color: colors.t1 }]}>I've sent the command</Text>
             </TouchableOpacity>
           </View>

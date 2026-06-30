@@ -51,7 +51,7 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.bg }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
@@ -68,7 +68,7 @@ export default function LoginScreen() {
         <View style={styles.formContainer}>
           {/* Email Field */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.t3 }]}>EMAIL</Text>
+            <Text style={[styles.label, { color: colors.t2 }]}>EMAIL</Text>
             <TextInput
               style={[
                 styles.input,
@@ -83,6 +83,8 @@ export default function LoginScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              placeholder="you@example.com"
+              placeholderTextColor={colors.t4}
               onFocus={() => setEmailFocused(true)}
               onBlur={() => setEmailFocused(false)}
             />
@@ -90,7 +92,7 @@ export default function LoginScreen() {
 
           {/* Password Field */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.t3 }]}>PASSWORD</Text>
+            <Text style={[styles.label, { color: colors.t2 }]}>PASSWORD</Text>
             <TextInput
               style={[
                 styles.input,
@@ -103,6 +105,8 @@ export default function LoginScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              placeholder="••••••"
+              placeholderTextColor={colors.t4}
               onFocus={() => setPasswordFocused(true)}
               onBlur={() => setPasswordFocused(false)}
             />
@@ -128,6 +132,16 @@ export default function LoginScreen() {
             activeOpacity={0.7}>
             <Text style={[styles.forgotText, { color: colors.t3 }]}>
               Forgot password?
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.registerLink}
+            onPress={() => router.push('/(auth)/register')}
+            activeOpacity={0.7}>
+            <Text style={[styles.registerText, { color: colors.t3 }]}>
+              Don't have an account?{' '}
+              <Text style={{ color: colors.accent, fontFamily: 'Poppins_600SemiBold' }}>Sign Up</Text>
             </Text>
           </TouchableOpacity>
         </View>
@@ -205,5 +219,13 @@ const styles = StyleSheet.create({
   forgotText: {
     fontFamily: 'Poppins_400Regular',
     fontSize: 12,
+  },
+  registerLink: {
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  registerText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
   },
 });

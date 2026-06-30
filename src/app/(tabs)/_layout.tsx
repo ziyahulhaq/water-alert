@@ -4,9 +4,11 @@ import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/theme/ThemeContext';
 import { Header } from '@/components/Header';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabsLayout() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -17,8 +19,8 @@ export default function TabsLayout() {
             backgroundColor: colors.bg,
             borderTopWidth: 1,
             borderTopColor: colors.frame,
-            height: 64,
-            paddingBottom: 8,
+            height: 60 + (insets.bottom > 0 ? insets.bottom - 8 : 0),
+            paddingBottom: insets.bottom > 0 ? insets.bottom - 8 : 8,
             paddingTop: 8,
             elevation: 0,
             shadowOpacity: 0,

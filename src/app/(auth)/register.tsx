@@ -10,22 +10,27 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { InputField } from '@/components/ui/input-field';
-import { GradientButton } from '@/components/ui/gradient-button';
 import { useAuth } from '@/hooks/use-auth';
-import { AppColors, BorderRadius, FontSizes, Spacing } from '@/constants/theme';
+import { useTheme } from '@/theme/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function RegisterScreen() {
   const router = useRouter();
   const { signUp } = useAuth();
+  const { colors } = useTheme();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const [confirmFocused, setConfirmFocused] = useState(false);
 
   const handleRegister = async () => {
     setError(null);
@@ -59,72 +64,113 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      style={[styles.container, { backgroundColor: colors.bg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.headerContainer}>
-          <Text style={styles.logoIcon}>💧</Text>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>
-            Sign up to start monitoring your water supply
-          </Text>
+
+        {/* Header / Branding */}
+        <View style={styles.brandingContainer}>
+          <Ionicons name="water-outline" size={42} color={colors.accent} style={{ marginBottom: 16 }} />
+          <Text style={[styles.appName, { color: colors.t1 }]}>WATER ALERT</Text>
+          <Text style={[styles.tagline, { color: colors.t3 }]}>Create your account</Text>
         </View>
 
         {/* Form */}
         <View style={styles.formContainer}>
-          <InputField
-            label="Email Address"
-            icon="📧"
-            placeholder="you@example.com"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <InputField
-            label="Password"
-            icon="🔒"
-            placeholder="Min. 6 characters"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-          <InputField
-            label="Confirm Password"
-            icon="🔐"
-            placeholder="Re-enter your password"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-          />
+          {/* Email Field */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: colors.t2 }]}>EMAIL</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: emailFocused ? colors.accent : colors.hair,
+                  color: colors.t1,
+                }
+              ]}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="you@example.com"
+              placeholderTextColor={colors.t4}
+              onFocus={() => setEmailFocused(true)}
+              onBlur={() => setEmailFocused(false)}
+            />
+          </View>
+
+          {/* Password Field */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: colors.t2 }]}>PASSWORD</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: passwordFocused ? colors.accent : colors.hair,
+                  color: colors.t1,
+                }
+              ]}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="Min. 6 characters"
+              placeholderTextColor={colors.t4}
+              onFocus={() => setPasswordFocused(true)}
+              onBlur={() => setPasswordFocused(false)}
+            />
+          </View>
+
+          {/* Confirm Password Field */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: colors.t2 }]}>CONFIRM PASSWORD</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: confirmFocused ? colors.accent : colors.hair,
+                  color: colors.t1,
+                }
+              ]}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              placeholder="Re-enter your password"
+              placeholderTextColor={colors.t4}
+              onFocus={() => setConfirmFocused(true)}
+              onBlur={() => setConfirmFocused(false)}
+            />
+          </View>
 
           {error && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>⚠️ {error}</Text>
-            </View>
+            <Text style={[styles.errorText, { color: colors.alert }]}>
+              {error}
+            </Text>
           )}
 
-          <GradientButton
-            title="Create Account"
+          <TouchableOpacity
+            style={[styles.submitButton, { backgroundColor: colors.t1, opacity: loading ? 0.7 : 1 }]}
             onPress={handleRegister}
-            loading={loading}
-            icon="✨"
-            colors={['#059669', '#10B981']}
-            style={styles.submitButton}
-          />
+            disabled={loading}
+            activeOpacity={0.8}>
+            <Text style={[styles.submitButtonText, { color: colors.bg }]}>
+              {loading ? 'Creating account...' : 'Create Account'}
+            </Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.loginLink}
             onPress={() => router.back()}
             activeOpacity={0.7}>
-            <Text style={styles.loginText}>
+            <Text style={[styles.loginText, { color: colors.t3 }]}>
               Already have an account?{' '}
-              <Text style={styles.loginHighlight}>Sign In</Text>
+              <Text style={{ color: colors.accent, fontFamily: 'Poppins_600SemiBold' }}>Sign In</Text>
             </Text>
           </TouchableOpacity>
         </View>
@@ -136,65 +182,71 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: AppColors.bgPrimary,
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: Spacing['2xl'],
-    paddingVertical: Spacing['4xl'],
+    paddingHorizontal: 32,
+    paddingBottom: 48,
   },
-  headerContainer: {
+  brandingContainer: {
     alignItems: 'center',
-    marginBottom: Spacing['3xl'],
+    marginBottom: 48,
   },
-  logoIcon: {
-    fontSize: 48,
-    marginBottom: Spacing.md,
+  appName: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 13,
+    letterSpacing: 0.24 * 13,
+    textTransform: 'uppercase',
+    marginBottom: 8,
   },
-  title: {
-    fontSize: FontSizes['2xl'],
-    fontWeight: '800',
-    color: AppColors.textPrimary,
-    marginBottom: Spacing.xs,
-  },
-  subtitle: {
-    fontSize: FontSizes.md,
-    color: AppColors.textMuted,
-    textAlign: 'center',
+  tagline: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
   },
   formContainer: {
-    backgroundColor: AppColors.bgCard,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
-    borderColor: AppColors.bgCardBorder,
-    padding: Spacing['2xl'],
+    width: '100%',
   },
-  errorBox: {
-    backgroundColor: AppColors.danger + '15',
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.lg,
+  inputGroup: {
+    marginBottom: 24,
+  },
+  label: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  input: {
+    height: 46,
     borderWidth: 1,
-    borderColor: AppColors.danger + '30',
+    borderRadius: 4,
+    paddingHorizontal: 16,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
   },
   errorText: {
-    fontSize: FontSizes.sm,
-    color: AppColors.danger,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    marginBottom: 24,
+    marginTop: -8,
   },
   submitButton: {
-    marginTop: Spacing.sm,
+    height: 48,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  submitButtonText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
   },
   loginLink: {
     alignItems: 'center',
-    marginTop: Spacing.xl,
+    marginTop: 24,
   },
   loginText: {
-    fontSize: FontSizes.sm,
-    color: AppColors.textMuted,
-  },
-  loginHighlight: {
-    color: AppColors.accentBlue,
-    fontWeight: '600',
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
   },
 });

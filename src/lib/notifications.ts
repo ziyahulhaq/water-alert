@@ -8,6 +8,11 @@ const WATER_ALERTS_CHANNEL = "water_alerts";
 const hasFirebaseConfig =
   Platform.OS === "android" || Constants.expoConfig?.extra?.hasIosFirebaseConfig === true;
 
+// Safe check for Expo Go environment
+const isExpoGo =
+  Constants.appOwnership === "expo" ||
+  (Constants.executionEnvironment && (Constants.executionEnvironment as string) === "store-client");
+
 // ── Lazy module loaders ───────────────────────────────────────────────────────
 // Both expo-notifications (SDK 53 Expo Go) and @react-native-firebase/messaging
 // throw at import time when their native modules aren't linked. We load them
@@ -17,6 +22,10 @@ type ExpoNotifications = typeof import("expo-notifications");
 let _notifications: ExpoNotifications | null = null;
 
 function getNotifications(): ExpoNotifications | null {
+  if (isExpoGo) {
+    console.log("[Notifications] Running in Expo Go, skipping native notifications loading.");
+    return null;
+  }
   if (_notifications) return _notifications;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -32,6 +41,10 @@ type FirebaseMessaging = typeof import("@react-native-firebase/messaging").defau
 let _messaging: FirebaseMessaging | null = null;
 
 function getMessaging(): FirebaseMessaging | null {
+  if (isExpoGo) {
+    console.log("[FCM] Running in Expo Go, skipping native Firebase messaging loading.");
+    return null;
+  }
   if (_messaging) return _messaging;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires

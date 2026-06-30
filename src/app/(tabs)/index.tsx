@@ -7,6 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { useTheme } from '@/theme/ThemeContext';
 import { useDevice } from '@/hooks/use-device';
@@ -14,6 +15,7 @@ import { getRelativeTime, formatTimestamp } from '@/lib/time-utils';
 import { PulseDot } from '@/components/PulseDot';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 
 export default function DashboardScreen() {
   const { colors } = useTheme();
@@ -36,9 +38,52 @@ export default function DashboardScreen() {
     );
   }
 
-  const waterAvailable = latestEvent?.event_type === 'arrived' && (latestEvent?.water_level ?? 0) > 0;
-  const statusColor = waterAvailable ? colors.accent : colors.alert;
-  const statusWord = waterAvailable ? 'FLOWING' : 'STOPPED';
+  // ── No device paired → show empty state ──────────────────────────────────
+  if (!device) {
+    return (
+      <View style={[styles.emptyContainer, { backgroundColor: colors.bg }]}>
+        {/* Icon circle */}
+        <View style={[styles.emptyIconCircle, { backgroundColor: colors.surface, borderColor: colors.hair }]}>
+          <Ionicons name="hardware-chip-outline" size={40} color={colors.accent} />
+        </View>
+
+        <Text style={[styles.emptyTitle, { color: colors.t1 }]}>No device paired</Text>
+        <Text style={[styles.emptySubtitle, { color: colors.t3 }]}>
+          Pair your WaterAlert sensor to start{`\n`}monitoring water flow in real time.
+        </Text>
+
+        <TouchableOpacity
+          style={[styles.pairCTA, { backgroundColor: colors.accent }]}
+          onPress={() => router.push('/pair-device')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="bluetooth" size={16} color={colors.bg} style={{ marginRight: 8 }} />
+          <Text style={[styles.pairCTAText, { color: colors.bg }]}>Pair a Device</Text>
+        </TouchableOpacity>
+
+        <Text style={[styles.emptyHint, { color: colors.t3 }]}>
+          Or go to Settings → Pair New Device
+        </Text>
+      </View>
+    );
+  }
+
+  // ── Device paired → full dashboard ───────────────────────────────────────
+  const lastEventType = latestEvent?.event_type || 'unknown';
+  
+  let statusColor = colors.alert;
+  let statusWord = 'STOPPED';
+  
+  if (lastEventType === 'arrived') {
+    statusColor = colors.accent;
+    statusWord = 'FLOWING';
+  } else if (lastEventType === 'heartbeat') {
+    statusColor = colors.warning;
+    statusWord = 'HEARTBEAT';
+  } else if (lastEventType === 'stopped') {
+    statusColor = colors.alert;
+    statusWord = 'STOPPED';
+  }
 
   const formatHHMM = (isoString?: string) => {
     if (!isoString) return '--:--';
@@ -46,12 +91,24 @@ export default function DashboardScreen() {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
-  const timeLabel = waterAvailable ? 'FLOWING SINCE' : 'STOPPED AT';
+  let timeLabel = 'STOPPED AT';
+  if (lastEventType === 'arrived') {
+    timeLabel = 'FLOWING SINCE';
+  } else if (lastEventType === 'heartbeat') {
+    timeLabel = 'LAST ACTIVE';
+  }
+
   const timeValue = formatHHMM(latestEvent?.detected_at);
   const eventsCount = recentEvents.length;
-  const deviceName = device?.name || 'WTR-01';
+  const deviceName = device?.model_id || 'WTR-01';
 
   const telegramConnected = !!profile?.chat_id;
+  const linkToken = profile?.link_token ? profile.link_token.substring(0, 8).toUpperCase() : '123456';
+
+  const handleCopyLink = async () => {
+    await Clipboard.setStringAsync(`/link ${linkToken}`);
+    Alert.alert('Copied', 'Telegram link command copied to clipboard!');
+  };
 
   return (
     <ScrollView
@@ -78,9 +135,10 @@ export default function DashboardScreen() {
           {statusWord}
         </Text>
         <Text style={[styles.heroSubtitle, { color: colors.t2 }]}>
-          {waterAvailable 
-            ? `Water has been flowing for ${getRelativeTime(latestEvent?.detected_at || '').replace(' ago', '')}` 
-            : `Water stopped ${getRelativeTime(latestEvent?.detected_at || '')}`}
+          {lastEventType === 'arrived' && `Water has been flowing for ${getRelativeTime(latestEvent?.detected_at || '').replace(' ago', '')}`}
+          {lastEventType === 'heartbeat' && `Last check-in ${getRelativeTime(latestEvent?.detected_at || '')}`}
+          {lastEventType === 'stopped' && `Water stopped ${getRelativeTime(latestEvent?.detected_at || '')}`}
+          {lastEventType === 'unknown' && `No events recorded`}
         </Text>
       </View>
 
@@ -103,17 +161,36 @@ export default function DashboardScreen() {
       </View>
 
       {/* Telegram Row */}
-      <View style={[styles.telegramRow, { borderBottomColor: colors.divider }]}>
-        <PulseDot color={telegramConnected ? colors.accent : colors.alert} size={6} />
-        <View style={styles.telegramTextCol}>
-          <Text style={[styles.telegramStatus, { color: colors.t1 }]}>
-            {telegramConnected ? 'Telegram connected' : 'Telegram not linked'}
-          </Text>
-          <Text style={[styles.telegramHandle, { color: colors.t3 }]}>
-            {telegramConnected ? '@waterbot' : 'No account linked'}
-          </Text>
+      {telegramConnected ? (
+        <View style={[styles.telegramRow, { borderBottomColor: colors.divider }]}>
+          <PulseDot color={colors.accent} size={6} />
+          <View style={styles.telegramTextCol}>
+            <Text style={[styles.telegramStatus, { color: colors.t1 }]}>
+              Connected
+            </Text>
+            <Text style={[styles.telegramHandle, { color: colors.t3 }]}>
+              Telegram alerts active
+            </Text>
+          </View>
         </View>
-      </View>
+      ) : (
+        <TouchableOpacity
+          style={[styles.telegramRow, { borderBottomColor: colors.divider }]}
+          onPress={handleCopyLink}
+          activeOpacity={0.7}
+        >
+          <PulseDot color={colors.alert} size={6} />
+          <View style={styles.telegramTextCol}>
+            <Text style={[styles.telegramStatus, { color: colors.t1 }]}>
+              Not Connected
+            </Text>
+            <Text style={[styles.telegramHandle, { color: colors.accent, fontFamily: 'Poppins_600SemiBold' }]}>
+              Tap to copy: /link {linkToken}
+            </Text>
+          </View>
+          <Ionicons name="copy-outline" size={16} color={colors.accent} />
+        </TouchableOpacity>
+      )}
 
       {/* Recent Activity Section */}
       <View style={styles.activitySection}>
@@ -125,7 +202,22 @@ export default function DashboardScreen() {
         </View>
 
         {recentEvents.slice(0, 4).map((event, index) => {
-          const isArrived = event.event_type === 'arrived';
+          const type = event.event_type;
+          
+          let dotColor = colors.alert;
+          let eventLabelText = 'Water stopped';
+          
+          if (type === 'arrived') {
+            dotColor = colors.accent;
+            eventLabelText = 'Water arrived';
+          } else if (type === 'heartbeat') {
+            dotColor = colors.warning;
+            eventLabelText = 'Heartbeat';
+          } else if (type === 'stopped') {
+            dotColor = colors.alert;
+            eventLabelText = 'Water stopped';
+          }
+
           return (
             <View 
               key={event.id} 
@@ -135,9 +227,9 @@ export default function DashboardScreen() {
               ]}
             >
               <View style={styles.activityRowLeft}>
-                <View style={[styles.activityDot, { backgroundColor: isArrived ? colors.accent : colors.alert }]} />
+                <View style={[styles.activityDot, { backgroundColor: dotColor }]} />
                 <Text style={[styles.activityEventLabel, { color: colors.t1 }]}>
-                  {isArrived ? 'Water arrived' : 'Water stopped'}
+                  {eventLabelText}
                 </Text>
               </View>
               <Text style={[styles.activityTime, { color: colors.t3 }]}>
@@ -162,6 +254,54 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  // ── Empty / No-device state ───────────────────────────────────────────────
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    gap: 12,
+  },
+  emptyIconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 20,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  pairCTA: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 30,
+    marginTop: 8,
+  },
+  pairCTAText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 15,
+  },
+  emptyHint: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
   },
   
   // Hero

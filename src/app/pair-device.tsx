@@ -1,7 +1,7 @@
 // ─── Device Pairing Screen ───────────────────────────────────────────────────
-// 3-tab layout: Bluetooth (BLE), QR Code Scanner, Manual Input
+// 2-tab layout matching mockup: Bluetooth (BLE) and QR Code Scanner
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,51 +10,76 @@ import {
   Alert,
   ActivityIndicator,
   TouchableOpacity,
-  FlatList,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { TabSelector } from '@/components/ui/tab-selector';
 import { GlassCard } from '@/components/ui/glass-card';
 import { GradientButton } from '@/components/ui/gradient-button';
 import { InputField } from '@/components/ui/input-field';
-import { StatusBadge } from '@/components/ui/status-badge';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/storage-client';
-import { hashMacAddress } from '@/lib/hash';
+import { useTheme } from '@/theme/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { AppColors, BorderRadius, FontSizes, Spacing } from '@/constants/theme';
-
-// ─── Tab Configuration ───────────────────────────────────────────────────────
-
-const TABS = [
-  { key: 'ble', label: 'Bluetooth', icon: '📶' },
-  { key: 'qr', label: 'QR Code', icon: '📷' },
-  { key: 'manual', label: 'Manual', icon: '✏️' },
-];
 
 export default function PairDeviceScreen() {
   const [activeTab, setActiveTab] = useState('ble');
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.container}>
-      <View style={styles.tabContainer}>
-        <TabSelector tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
+      {/* Custom Mockup Header */}
+      <View style={[
+        styles.customHeader, 
+        { 
+          height: 52 + insets.top, 
+          paddingTop: insets.top, 
+          backgroundColor: colors.bg, 
+          borderBottomColor: colors.frame 
+        }
+      ]}>
+        <Text style={[styles.customHeaderTitle, { color: colors.t1 }]}>ADD DEVICE</Text>
+      </View>
+
+      {/* Mockup Tabs */}
+      <View style={[styles.customTabBar, { borderBottomColor: colors.frame }]}>
+        <TouchableOpacity 
+          style={[styles.customTab, activeTab === 'ble' && { borderBottomColor: colors.accent, borderBottomWidth: 2 }]} 
+          onPress={() => setActiveTab('ble')}
+          activeOpacity={0.8}
+        >
+          <Text style={[
+            styles.customTabText, 
+            { color: activeTab === 'ble' ? colors.t1 : colors.t3 },
+            activeTab === 'ble' && { fontFamily: 'Poppins_600SemiBold' }
+          ]}>
+            Bluetooth
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.customTab, activeTab === 'qr' && { borderBottomColor: colors.accent, borderBottomWidth: 2 }]} 
+          onPress={() => setActiveTab('qr')}
+          activeOpacity={0.8}
+        >
+          <Text style={[
+            styles.customTabText, 
+            { color: activeTab === 'qr' ? colors.t1 : colors.t3 },
+            activeTab === 'qr' && { fontFamily: 'Poppins_600SemiBold' }
+          ]}>
+            QR Code
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {activeTab === 'ble' && <BLETab />}
       {activeTab === 'qr' && <QRTab />}
-      {activeTab === 'manual' && <ManualTab />}
     </View>
   );
 }
 
-// ─── BLE Tab ─────────────────────────────────────────────────────────────────
-
-interface BLEDevice {
-  id: string;
-  name: string;
-  rssi: number;
-}
 
 // ─── BLE Tab ─────────────────────────────────────────────────────────────────
 
@@ -118,8 +143,50 @@ async function requestBluetoothPermissions(): Promise<boolean> {
   return false;
 }
 
+const ScanningRing = ({ delay, color }: { delay: number; color: string }) => {
+  const scale = useRef(new Animated.Value(0.3)).current;
+  const opacity = useRef(new Animated.Value(0.7)).current;
+
+  useEffect(() => {
+    const runAnimation = () => {
+      scale.setValue(0.3);
+      opacity.setValue(0.7);
+      Animated.parallel([
+        Animated.timing(scale, {
+          toValue: 1.0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ]).start(() => runAnimation());
+    };
+
+    const t = setTimeout(runAnimation, delay);
+    return () => clearTimeout(t);
+  }, [scale, opacity, delay]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.scanningRing,
+        {
+          borderColor: color,
+          opacity: opacity,
+          transform: [{ scale: scale }],
+        },
+      ]}
+    />
+  );
+};
+
 function BLETab() {
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const router = useRouter();
   const [scanning, setScanning] = useState(false);
   const [devices, setDevices] = useState<BLEDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<BLEDevice | null>(null);
@@ -128,10 +195,26 @@ function BLETab() {
   const [wifiPassword, setWifiPassword] = useState('');
   const [status, setStatus] = useState<string>('');
 
+  const [wifiNetworks, setWifiNetworks] = useState<string[]>([]);
+  const [bleMac, setBleMac] = useState<string>('');
+  const [bleModelId, setBleModelId] = useState<string>('');
+  const [connectedDevice, setConnectedDevice] = useState<any>(null);
+
   const isMockBLE = !manager;
+
+  useEffect(() => {
+    return () => {
+      if (connectedDevice) {
+        connectedDevice.cancelConnection().catch(() => {});
+      }
+    };
+  }, [connectedDevice]);
 
   const handleScan = useCallback(async () => {
     setDevices([]);
+    setSelectedDevice(null);
+    setWifiNetworks([]);
+    setConnectedDevice(null);
 
     if (isMockBLE) {
       setScanning(true);
@@ -139,11 +222,10 @@ function BLETab() {
       try {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         const mockDevices: BLEDevice[] = [
-          { id: 'mock-ble-1', name: 'WaterAlert-A3F2', rssi: -45 },
-          { id: 'mock-ble-2', name: 'WaterAlert-B7C1', rssi: -62 },
+          { id: 'mock-ble-1', name: 'WaterAlert-8B9C', rssi: -50 },
         ];
         setDevices(mockDevices);
-        setStatus(`Found ${mockDevices.length} device(s)`);
+        setStatus('Scan complete.');
       } catch {
         setStatus('Scan failed.');
       } finally {
@@ -201,32 +283,27 @@ function BLETab() {
     }, 10000);
   }, [isMockBLE]);
 
-  const handleConnect = useCallback(async () => {
-    if (!selectedDevice) return;
-    if (!wifiSSID.trim()) {
-      Alert.alert('Error', 'Please enter the WiFi SSID');
-      return;
-    }
+  useEffect(() => {
+    handleScan();
+    return () => {
+      if (manager) manager.stopDeviceScan();
+    };
+  }, [handleScan]);
 
+  const handleSelectDevice = async (device: BLEDevice) => {
+    setSelectedDevice(device);
     setConnecting(true);
     setStatus('Connecting to device...');
 
     if (isMockBLE) {
       try {
         await new Promise((resolve) => setTimeout(resolve, 1500));
-        setStatus('Writing WiFi configuration (Simulation)...');
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        setStatus('Waiting for device WiFi connection...');
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        // Insert mock device connection
-        setStatus('Linking device to account...');
-        await linkDeviceByModelId('WD-A3F2B7', user?.id ?? '');
-
-        setStatus('✅ Device paired successfully!');
-        Alert.alert('Success', 'Device has been paired and connected to WiFi!');
+        setWifiNetworks(['MyHomeWiFi_5G', 'Municipal_Water_Alert', 'GuestNet', 'Office_WiFi']);
+        setBleMac('AA:BB:CC:DD:EE:FF');
+        setBleModelId('WD-A3F2B7');
+        setStatus('Connected to ' + device.name);
       } catch (err) {
-        Alert.alert('Error', err instanceof Error ? err.message : 'Failed to link device');
+        console.error(err);
       } finally {
         setConnecting(false);
       }
@@ -236,56 +313,107 @@ function BLETab() {
     manager!.stopDeviceScan();
 
     try {
-      // 1. Connect to peripheral
-      const device = await manager!.connectToDevice(selectedDevice.id);
-      setStatus('Connected. Discovering services...');
+      const connected = await manager!.connectToDevice(device.id);
+      setConnectedDevice(connected);
+      setStatus('Discovering services...');
+      await connected.discoverAllServicesAndCharacteristics();
+      
+      setStatus('Retrieving device configuration...');
 
-      // 2. Discover services and characteristics
-      await device.discoverAllServicesAndCharacteristics();
-      setStatus('Writing WiFi configuration...');
+      const macChar = await connected.readCharacteristicForService(
+        BLE_SERVICE_UUID,
+        BLE_CHARACTERISTICS.MAC_ADDRESS
+      );
+      const mac = macChar.value ? Buffer.from(macChar.value, 'base64').toString('ascii') : '';
+      setBleMac(mac);
 
-      // 3. Encode SSID and password to Base64
-      const b64SSID = Buffer.from(wifiSSID).toString('base64');
+      const modelChar = await connected.readCharacteristicForService(
+        BLE_SERVICE_UUID,
+        BLE_CHARACTERISTICS.MODEL_ID
+      );
+      const model = modelChar.value ? Buffer.from(modelChar.value, 'base64').toString('ascii') : '';
+      setBleModelId(model);
+
+      try {
+        const wifiListChar = await connected.readCharacteristicForService(
+          BLE_SERVICE_UUID,
+          BLE_CHARACTERISTICS.WIFI_SCAN_LIST
+        );
+        const wifiListStr = wifiListChar.value ? Buffer.from(wifiListChar.value, 'base64').toString('ascii') : '';
+        console.log('[BLE] WiFi networks:', wifiListStr);
+        if (wifiListStr.trim()) {
+          const networks = wifiListStr.split('\n').filter((s: string) => s.trim().length > 0);
+          setWifiNetworks(networks);
+        }
+      } catch (wifiErr) {
+        console.warn('[BLE] WiFi list characteristic read failed:', wifiErr);
+      }
+
+      setStatus('Connected to ' + device.name);
+    } catch (err: any) {
+      console.error('[BLE] Select device failed:', err);
+      Alert.alert('Connection Failed', err.message || 'Failed to connect to device');
+      setSelectedDevice(null);
+      setStatus('');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleConnect = useCallback(async () => {
+    if (!wifiSSID.trim()) {
+      Alert.alert('Error', 'Please select or enter a WiFi SSID');
+      return;
+    }
+
+    setConnecting(true);
+    setStatus('Writing WiFi configuration...');
+
+    if (isMockBLE) {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        setStatus('Waiting for device WiFi connection...');
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        setStatus('Linking device to account...');
+        await linkDeviceByModelId('WD-A3F2B7', user?.id ?? '');
+        setStatus('✅ Device paired successfully!');
+        Alert.alert('Success', 'Device has been paired and connected to WiFi!', [
+          { text: 'OK', onPress: () => router.replace('/(tabs)') }
+        ]);
+      } catch (err) {
+        Alert.alert('Error', err instanceof Error ? err.message : 'Failed to link device');
+      } finally {
+        setConnecting(false);
+      }
+      return;
+    }
+
+    try {
+      if (!connectedDevice) {
+        throw new Error('Device is not connected. Please re-select the device.');
+      }
+
+      const b64SSID = Buffer.from(wifiSSID.trim()).toString('base64');
       const b64Password = Buffer.from(wifiPassword).toString('base64');
 
-      // 4. Write characteristics
-      await device.writeCharacteristicWithResponseForService(
+      await connectedDevice.writeCharacteristicWithResponseForService(
         BLE_SERVICE_UUID,
         BLE_CHARACTERISTICS.SSID,
         b64SSID
       );
-      await device.writeCharacteristicWithResponseForService(
+      await connectedDevice.writeCharacteristicWithResponseForService(
         BLE_SERVICE_UUID,
         BLE_CHARACTERISTICS.PASSWORD,
         b64Password
       );
 
-      // 5. Read MAC address and Model ID from device
-      setStatus('Retrieving device details...');
-      const macChar = await device.readCharacteristicForService(
-        BLE_SERVICE_UUID,
-        BLE_CHARACTERISTICS.MAC_ADDRESS
-      );
-      const modelChar = await device.readCharacteristicForService(
-        BLE_SERVICE_UUID,
-        BLE_CHARACTERISTICS.MODEL_ID
-      );
-
-      const mac = macChar.value ? Buffer.from(macChar.value, 'base64').toString('ascii') : '';
-      const modelId = modelChar.value ? Buffer.from(modelChar.value, 'base64').toString('ascii') : '';
-
-      if (!mac || !modelId) {
-        throw new Error('Failed to retrieve MAC or Model ID from device.');
-      }
-
-      // 6. Monitor Connection status characteristic
-      setStatus('Waiting for device WiFi connection...');
+      setStatus('WiFi credentials sent. Waiting for connection...');
       let isConfigured = false;
 
-      const statusSubscription = device.monitorCharacteristicForService(
+      const statusSubscription = connectedDevice.monitorCharacteristicForService(
         BLE_SERVICE_UUID,
         BLE_CHARACTERISTICS.STATUS,
-        async (err, char) => {
+        async (err: any, char: any) => {
           if (err) {
             console.error('Monitoring error:', err);
             return;
@@ -296,12 +424,14 @@ function BLETab() {
               isConfigured = true;
               statusSubscription.remove();
 
-              // Pair device in Supabase / Local Storage
               setStatus('Linking device to account...');
               try {
-                await linkDeviceByModelId(modelId, user?.id ?? '');
+                const targetModelId = bleModelId || `WD-${bleMac.replace(/:/g, '').slice(-6)}`;
+                await linkDeviceByModelId(targetModelId, user?.id ?? '');
                 setStatus('✅ Device paired successfully!');
-                Alert.alert('Success', 'Device has been paired and connected to WiFi!');
+                Alert.alert('Success', 'Device has been paired and connected to WiFi!', [
+                  { text: 'OK', onPress: () => router.replace('/(tabs)') }
+                ]);
               } catch (linkErr) {
                 Alert.alert('Error', linkErr instanceof Error ? linkErr.message : 'Failed to link device');
               } finally {
@@ -312,7 +442,6 @@ function BLETab() {
         }
       );
 
-      // 30 seconds timeout
       setTimeout(() => {
         if (!isConfigured) {
           statusSubscription.remove();
@@ -324,19 +453,18 @@ function BLETab() {
 
     } catch (err) {
       console.error(err);
-      setStatus('Connection or setup failed');
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to connect to device');
+      setStatus('WiFi configuration failed');
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to configure WiFi');
       setConnecting(false);
     }
-  }, [selectedDevice, wifiSSID, wifiPassword, isMockBLE, user]);
+  }, [connectedDevice, wifiSSID, wifiPassword, isMockBLE, user, bleModelId, bleMac]);
 
   return (
     <ScrollView
-      style={styles.tabContent}
+      style={[styles.tabContent, { backgroundColor: colors.bg }]}
       contentContainerStyle={styles.tabScrollContent}
       showsVerticalScrollIndicator={false}>
-      {/* Simulation Banner Notice */}
-      {isMockBLE && (
+      {isMockBLE && scanning && (
         <GlassCard compact glowColor={AppColors.amber}>
           <View style={styles.infoRow}>
             <Text style={styles.infoIcon}>ℹ️</Text>
@@ -347,77 +475,149 @@ function BLETab() {
         </GlassCard>
       )}
 
-      {/* Scan Button */}
-      <GradientButton
-        title={scanning ? 'Scanning...' : 'Scan for Devices'}
-        icon="📶"
-        onPress={handleScan}
-        loading={scanning}
-        style={styles.scanButton}
-      />
-
-      {/* Status */}
-      {status !== '' && (
-        <Text style={styles.statusText}>{status}</Text>
+      {scanning && (
+        <View style={styles.scanningContainer}>
+          <View style={styles.ringsContainer}>
+            <ScanningRing delay={0} color={colors.accent} />
+            <ScanningRing delay={670} color={colors.accent} />
+            <ScanningRing delay={1340} color={colors.accent} />
+            <View style={[styles.centerBluetoothCircle, { backgroundColor: colors.surface, borderColor: colors.hair }]}>
+              <Ionicons name="bluetooth" size={26} color={colors.accent} />
+            </View>
+          </View>
+          <Text style={[styles.scanningText, { color: colors.t3 }]}>Scanning for nearby devices...</Text>
+        </View>
       )}
 
-      {/* Device List */}
-      {devices.length > 0 && (
-        <GlassCard>
-          <Text style={styles.listTitle}>Nearby Devices</Text>
-          {devices.map((device) => (
-            <TouchableOpacity
-              key={device.id}
-              style={[
-                styles.deviceItem,
-                selectedDevice?.id === device.id && styles.deviceItemSelected,
-              ]}
-              onPress={() => setSelectedDevice(device)}
-              activeOpacity={0.7}>
-              <View style={styles.deviceLeft}>
-                <Text style={styles.deviceIcon}>📡</Text>
-                <View>
-                  <Text style={styles.deviceName}>{device.name}</Text>
-                  <Text style={styles.deviceRssi}>
-                    Signal: {device.rssi} dBm
+      {!scanning && devices.length > 0 && !selectedDevice && (
+        <View style={styles.foundContainer}>
+          <View style={[styles.centerBluetoothCircle, { alignSelf: 'center', marginBottom: 36, backgroundColor: colors.surface, borderColor: colors.hair }]}>
+            <Ionicons name="bluetooth" size={26} color={colors.accent} />
+          </View>
+          
+          <Text style={[styles.foundLabel, { color: colors.t3 }]}>Device found</Text>
+          
+          {devices.map((dev) => {
+            return (
+              <View key={dev.id} style={[styles.deviceCard, { backgroundColor: colors.surface, borderColor: colors.hair }]}>
+                <View style={styles.deviceCardLeft}>
+                  <Text style={[styles.deviceCardTitle, { color: colors.t1 }]}>{dev.name}</Text>
+                  <Text style={[styles.deviceCardSub, { color: colors.t3 }]}>
+                    Water Sensor · {dev.rssi} dBm
                   </Text>
                 </View>
+                <TouchableOpacity
+                  style={[styles.pairButton, { backgroundColor: colors.t1 }]}
+                  onPress={() => handleSelectDevice(dev)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.pairButtonText, { color: colors.bg }]}>Pair</Text>
+                </TouchableOpacity>
               </View>
-              {selectedDevice?.id === device.id && (
-                <StatusBadge label="Selected" color={AppColors.emerald} size="sm" />
-              )}
-            </TouchableOpacity>
-          ))}
-        </GlassCard>
+            );
+          })}
+        </View>
       )}
 
-      {/* WiFi Credentials Form */}
-      {selectedDevice && (
-        <GlassCard>
-          <Text style={styles.listTitle}>WiFi Configuration</Text>
-          <InputField
-            label="WiFi Network (SSID)"
-            icon="📶"
-            placeholder="Enter WiFi name"
-            value={wifiSSID}
-            onChangeText={setWifiSSID}
-          />
-          <InputField
-            label="WiFi Password"
-            icon="🔑"
-            placeholder="Enter WiFi password"
-            value={wifiPassword}
-            onChangeText={setWifiPassword}
-            secureTextEntry
-          />
-          <GradientButton
-            title="Connect & Pair"
-            icon="🔗"
-            onPress={handleConnect}
-            loading={connecting}
-            colors={['#059669', '#10B981']}
-          />
-        </GlassCard>
+      {selectedDevice && !scanning && (
+        <View style={{ marginTop: 12 }}>
+          <View style={[styles.connectedDeviceCard, { backgroundColor: colors.surface, borderColor: colors.accent + '25' }]}>
+            <View style={[styles.connectedIconContainer, { backgroundColor: colors.accent + '15' }]}>
+              <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.connectedDeviceTitle, { color: colors.accent }]}>Connected: {selectedDevice.name}</Text>
+              {bleModelId !== '' && <Text style={[styles.connectedDeviceSub, { color: colors.t3 }]}>Model ID: {bleModelId}</Text>}
+              {bleMac !== '' && <Text style={[styles.connectedDeviceSub, { color: colors.t3, fontFamily: 'JetBrainsMono_400Regular' }]}>MAC: {bleMac}</Text>}
+            </View>
+          </View>
+
+          <View style={{ marginTop: 18 }}>
+            <GlassCard>
+              <Text style={[styles.listTitle, { color: colors.t1, marginBottom: 12 }]}>WiFi Configuration</Text>
+              
+              <Text style={[styles.subLabel, { color: colors.t3, marginBottom: 8 }]}>SELECT YOUR WIFI NETWORK</Text>
+              {wifiNetworks.length > 0 ? (
+                <View style={styles.wifiListContainer}>
+                  {wifiNetworks.map((network, idx) => {
+                    const isSelected = wifiSSID === network;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[
+                          styles.wifiNetworkButton,
+                          {
+                            backgroundColor: isSelected ? colors.accent + '15' : colors.surface,
+                            borderColor: isSelected ? colors.accent : colors.hair,
+                          }
+                        ]}
+                        onPress={() => setWifiSSID(network)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons
+                          name="wifi"
+                          size={16}
+                          color={isSelected ? colors.accent : colors.t3}
+                          style={{ marginRight: 10 }}
+                        />
+                        <Text
+                          style={[
+                            styles.wifiNetworkText,
+                            {
+                              color: isSelected ? colors.accent : colors.t1,
+                              fontFamily: isSelected ? 'Poppins_600SemiBold' : 'Poppins_400Regular',
+                            }
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {network}
+                        </Text>
+                        {isSelected && (
+                          <Ionicons
+                            name="checkmark"
+                            size={16}
+                            color={colors.accent}
+                            style={{ marginLeft: 'auto' }}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <Text style={[styles.manualText, { color: colors.t3, marginTop: 12, marginBottom: 4 }]}>Or enter manually:</Text>
+                </View>
+              ) : (
+                connecting && <ActivityIndicator size="small" color={colors.accent} style={{ marginVertical: 10 }} />
+              )}
+
+              <InputField
+                label="WiFi Network (SSID)"
+                icon="📶"
+                placeholder="Enter WiFi name"
+                value={wifiSSID}
+                onChangeText={setWifiSSID}
+              />
+              <InputField
+                label="WiFi Password"
+                icon="🔑"
+                placeholder="Enter WiFi password"
+                value={wifiPassword}
+                onChangeText={setWifiPassword}
+                secureTextEntry
+              />
+              <GradientButton
+                title="Connect & Pair"
+                icon="🔗"
+                onPress={handleConnect}
+                loading={connecting}
+                colors={['#059669', '#10B981']}
+              />
+            </GlassCard>
+          </View>
+        </View>
+      )}
+
+      {status !== '' && !scanning && (
+        <Text style={[styles.statusText, { color: colors.t2, marginTop: 16 }]}>{status}</Text>
       )}
 
       <View style={styles.bottomSpacer} />
@@ -430,6 +630,7 @@ function BLETab() {
 function QRTab() {
   const router = useRouter();
   const { user } = useAuth();
+  const { colors } = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -470,18 +671,18 @@ function QRTab() {
 
   if (!permission) {
     return (
-      <View style={styles.centerContent}>
-        <ActivityIndicator size="large" color={AppColors.accentBlue} />
+      <View style={[styles.centerContent, { backgroundColor: colors.bg }]}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   if (!permission.granted) {
     return (
-      <View style={styles.centerContent}>
+      <View style={[styles.centerContent, { backgroundColor: colors.bg }]}>
         <Text style={styles.permissionIcon}>📷</Text>
-        <Text style={styles.permissionTitle}>Camera Access Required</Text>
-        <Text style={styles.permissionText}>
+        <Text style={[styles.permissionTitle, { color: colors.t1 }]}>Camera Access Required</Text>
+        <Text style={[styles.permissionText, { color: colors.t3 }]}>
           We need camera permission to scan QR codes on your device
         </Text>
         <GradientButton
@@ -495,9 +696,9 @@ function QRTab() {
   }
 
   return (
-    <View style={styles.qrContainer}>
+    <View style={[styles.qrContainer, { backgroundColor: colors.bg }]}>
       <CameraView
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
       />
@@ -505,10 +706,10 @@ function QRTab() {
       {/* Overlay */}
       <View style={styles.qrOverlay}>
         <View style={styles.qrFrame}>
-          <View style={[styles.qrCorner, styles.qrCornerTL]} />
-          <View style={[styles.qrCorner, styles.qrCornerTR]} />
-          <View style={[styles.qrCorner, styles.qrCornerBL]} />
-          <View style={[styles.qrCorner, styles.qrCornerBR]} />
+          <View style={[styles.qrCorner, styles.qrCornerTL, { borderColor: colors.accent }]} />
+          <View style={[styles.qrCorner, styles.qrCornerTR, { borderColor: colors.accent }]} />
+          <View style={[styles.qrCorner, styles.qrCornerBL, { borderColor: colors.accent }]} />
+          <View style={[styles.qrCorner, styles.qrCornerBR, { borderColor: colors.accent }]} />
         </View>
         <Text style={styles.qrHint}>
           {processing ? 'Processing...' : 'Point camera at device QR code'}
@@ -517,106 +718,12 @@ function QRTab() {
 
       {scanned && !processing && (
         <TouchableOpacity
-          style={styles.rescanButton}
+          style={[styles.rescanButton, { backgroundColor: colors.accent }]}
           onPress={() => setScanned(false)}>
           <Text style={styles.rescanText}>Tap to scan again</Text>
         </TouchableOpacity>
       )}
     </View>
-  );
-}
-
-// ─── Manual Input Tab ────────────────────────────────────────────────────────
-
-function ManualTab() {
-  const router = useRouter();
-  const { user } = useAuth();
-  const [modelId, setModelId] = useState('');
-  const [linking, setLinking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleLink = useCallback(async () => {
-    setError(null);
-
-    if (!modelId.trim()) {
-      setError('Please enter a Model ID');
-      return;
-    }
-
-    if (modelId.trim().length < 4) {
-      setError('Model ID must be at least 4 characters');
-      return;
-    }
-
-    setLinking(true);
-    try {
-      await linkDeviceByModelId(modelId.trim(), user?.id ?? '');
-      Alert.alert('Success', `Device ${modelId.trim()} has been linked!`, [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to link device');
-    } finally {
-      setLinking(false);
-    }
-  }, [modelId, user, router]);
-
-  return (
-    <ScrollView
-      style={styles.tabContent}
-      contentContainerStyle={styles.tabScrollContent}
-      showsVerticalScrollIndicator={false}>
-      <GlassCard>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionIcon}>✏️</Text>
-          <Text style={styles.sectionTitle}>Enter Model ID</Text>
-        </View>
-        <Text style={styles.sectionDesc}>
-          Find the Model ID on the sticker on your device (e.g., WD-8B9C0A)
-        </Text>
-
-        <InputField
-          label="Device Model ID"
-          icon="🏷️"
-          placeholder="WD-XXXXXX"
-          value={modelId}
-          onChangeText={setModelId}
-          autoCapitalize="characters"
-          error={error}
-        />
-
-        <GradientButton
-          title="Link Device"
-          icon="🔗"
-          onPress={handleLink}
-          loading={linking}
-          colors={['#059669', '#10B981']}
-        />
-      </GlassCard>
-
-      {/* Help Info */}
-      <GlassCard compact>
-        <Text style={styles.helpTitle}>Where to find the Model ID?</Text>
-        <View style={styles.helpItem}>
-          <Text style={styles.helpBullet}>•</Text>
-          <Text style={styles.helpText}>
-            Check the sticker on the back of your Smart Water Alert device
-          </Text>
-        </View>
-        <View style={styles.helpItem}>
-          <Text style={styles.helpBullet}>•</Text>
-          <Text style={styles.helpText}>
-            Format: WD- followed by 6 alphanumeric characters
-          </Text>
-        </View>
-        <View style={styles.helpItem}>
-          <Text style={styles.helpBullet}>•</Text>
-          <Text style={styles.helpText}>
-            Each device can be linked by up to 2 users
-          </Text>
-        </View>
-      </GlassCard>
-    </ScrollView>
   );
 }
 
@@ -667,11 +774,32 @@ async function linkDeviceByModelId(modelId: string, userId: string) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: AppColors.bgPrimary,
   },
-  tabContainer: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
+  customHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+  },
+  customHeaderTitle: {
+    fontFamily: 'Poppins_700Bold',
+    fontSize: 13,
+    letterSpacing: 0.22 * 13,
+    textTransform: 'uppercase',
+  },
+  customTabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+  },
+  customTab: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  customTabText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
   },
   tabContent: {
     flex: 1,
@@ -690,7 +818,96 @@ const styles = StyleSheet.create({
     height: Spacing['3xl'],
   },
 
-  // BLE Tab
+  // BLE Tab mockup styles
+  scanningContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 52,
+    paddingBottom: 40,
+  },
+  ringsContainer: {
+    position: 'relative',
+    width: 160,
+    height: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 36,
+  },
+  scanningRing: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    borderRadius: 80,
+    borderWidth: 1,
+  },
+  centerBluetoothCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanningText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 13 * 1.6,
+  },
+  foundContainer: {
+    flex: 1,
+    paddingTop: 52,
+    paddingHorizontal: 24,
+  },
+  foundLabel: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11,
+    letterSpacing: 0.07 * 11,
+    textTransform: 'uppercase',
+    marginBottom: 14,
+    alignSelf: 'flex-start',
+  },
+  deviceCard: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  deviceCardLeft: {
+    flex: 1,
+    gap: 4,
+  },
+  deviceCardTitle: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 15,
+  },
+  deviceCardSub: {
+    fontFamily: 'JetBrainsMono_400Regular',
+    fontSize: 11,
+  },
+  connectingText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 12,
+  },
+  pairButton: {
+    height: 36,
+    paddingHorizontal: 20,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pairButtonText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 13,
+  },
+
+  // BLE Tab original info & forms (retained for layout/fallback)
   infoRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -705,61 +922,25 @@ const styles = StyleSheet.create({
     color: AppColors.amber,
     lineHeight: 18,
   },
-  scanButton: {
-    marginBottom: Spacing.lg,
-  },
   statusText: {
     fontSize: FontSizes.sm,
-    color: AppColors.textSecondary,
     textAlign: 'center',
     marginBottom: Spacing.lg,
   },
   listTitle: {
     fontSize: FontSizes.md,
     fontWeight: '700',
-    color: AppColors.textPrimary,
     marginBottom: Spacing.md,
-  },
-  deviceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: Spacing.md,
-    borderRadius: BorderRadius.md,
-    backgroundColor: AppColors.bgSecondary,
-    marginBottom: Spacing.sm,
-    borderWidth: 1,
-    borderColor: AppColors.bgCardBorder,
-  },
-  deviceItemSelected: {
-    borderColor: AppColors.emerald + '60',
-    backgroundColor: AppColors.emerald + '10',
-  },
-  deviceLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  deviceIcon: {
-    fontSize: 24,
-  },
-  deviceName: {
-    fontSize: FontSizes.md,
-    fontWeight: '600',
-    color: AppColors.textPrimary,
-  },
-  deviceRssi: {
-    fontSize: FontSizes.xs,
-    color: AppColors.textMuted,
   },
 
   // QR Tab
   qrContainer: {
     flex: 1,
     position: 'relative',
+    minHeight: 450,
   },
   qrOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -772,7 +953,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 30,
     height: 30,
-    borderColor: AppColors.accentBlue,
+    borderWidth: 0,
   },
   qrCornerTL: {
     top: 0,
@@ -816,7 +997,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: Spacing['5xl'],
     alignSelf: 'center',
-    backgroundColor: AppColors.accentBlue,
     borderRadius: BorderRadius.full,
     paddingHorizontal: Spacing['2xl'],
     paddingVertical: Spacing.md,
@@ -835,12 +1015,10 @@ const styles = StyleSheet.create({
   permissionTitle: {
     fontSize: FontSizes.xl,
     fontWeight: '700',
-    color: AppColors.textPrimary,
     textAlign: 'center',
   },
   permissionText: {
     fontSize: FontSizes.sm,
-    color: AppColors.textMuted,
     textAlign: 'center',
     maxWidth: 280,
     lineHeight: 20,
@@ -849,47 +1027,55 @@ const styles = StyleSheet.create({
     marginTop: Spacing.lg,
     width: '100%',
   },
-
-  // Manual Tab
-  sectionHeader: {
+  connectedDeviceCard: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
+    gap: 12,
+    marginBottom: 8,
   },
-  sectionIcon: {
-    fontSize: 20,
+  connectedIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sectionTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: '700',
-    color: AppColors.textPrimary,
+  connectedDeviceTitle: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
   },
-  sectionDesc: {
-    fontSize: FontSizes.sm,
-    color: AppColors.textMuted,
-    marginBottom: Spacing.xl,
-    lineHeight: 18,
+  connectedDeviceSub: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
+    marginTop: 2,
   },
-  helpTitle: {
-    fontSize: FontSizes.md,
-    fontWeight: '600',
-    color: AppColors.textPrimary,
-    marginBottom: Spacing.md,
+  subLabel: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 10,
+    letterSpacing: 1,
   },
-  helpItem: {
+  wifiListContainer: {
+    marginBottom: 12,
+  },
+  wifiNetworkButton: {
     flexDirection: 'row',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 6,
   },
-  helpBullet: {
-    color: AppColors.accentBlue,
-    fontWeight: '700',
-  },
-  helpText: {
+  wifiNetworkText: {
+    fontSize: 13,
     flex: 1,
-    fontSize: FontSizes.sm,
-    color: AppColors.textSecondary,
-    lineHeight: 18,
+  },
+  manualText: {
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 11,
   },
 });
