@@ -23,8 +23,19 @@ module.exports = () => {
     (plugin) => !firebasePlugins.includes(Array.isArray(plugin) ? plugin[0] : plugin)
   );
 
-  if (hasIosFirebaseConfig || (hasAndroidFirebaseConfig && isAndroidCommand)) {
+  if (hasIosFirebaseConfig && isIosCommand) {
+    // Only add @react-native-firebase/app on iOS (not messaging)
+    // because messaging requires Push Notifications capability
+    // which is not supported by free/personal Apple Developer accounts.
+    plugins.push("@react-native-firebase/app");
+  } else if (hasAndroidFirebaseConfig && isAndroidCommand) {
     plugins.push(...firebasePlugins);
+  }
+
+  // When iOS Firebase config is missing, exclude Firebase from iOS autolinking
+  // to prevent the native FirebaseApp.configure() crash.
+  if (!hasIosFirebaseConfig) {
+    plugins.push("./plugins/withExcludeFirebaseAutolinking");
   }
 
   return {
