@@ -13,9 +13,12 @@ const CORS = {
 function waterLevelToNumeric(level: string | undefined): number {
   switch ((level ?? "").toUpperCase()) {
     case "NO_WATER":  return 0;
-    case "WATER_LOW": return 1;
-    case "WATER_MED": return 2;
-    case "WATER_HIGH":return 3;
+    case "WATER_LOW":
+    case "LOW":       return 1;
+    case "WATER_MED":
+    case "MEDIUM":    return 2;
+    case "WATER_HIGH":
+    case "HIGH":      return 3;
     default:           return 0;
   }
 }

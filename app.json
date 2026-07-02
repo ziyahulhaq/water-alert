@@ -13,7 +13,10 @@
       "bundleIdentifier": "com.wateralert.aqua",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "UIBackgroundModes": ["fetch", "remote-notification"]
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
       },
       "entitlements": {
         "aps-environment": "production"
@@ -77,7 +80,11 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "hasIosFirebaseConfig": true,
+      "eas": {
+        "projectId": "e5fc5309-7dd8-4853-bad7-4dc27b5adb48"
+      }
     }
   }
 }

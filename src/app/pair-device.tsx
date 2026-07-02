@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Animated,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -199,6 +200,9 @@ function BLETab() {
   const [bleMac, setBleMac] = useState<string>('');
   const [bleModelId, setBleModelId] = useState<string>('');
   const [connectedDevice, setConnectedDevice] = useState<any>(null);
+
+  const [ssidFocused, setSsidFocused] = useState(false);
+  const [passFocused, setPassFocused] = useState(false);
 
   const isMockBLE = !manager;
 
@@ -465,14 +469,14 @@ function BLETab() {
       contentContainerStyle={styles.tabScrollContent}
       showsVerticalScrollIndicator={false}>
       {isMockBLE && scanning && (
-        <GlassCard compact glowColor={AppColors.amber}>
+        <View style={[styles.infoBanner, { backgroundColor: colors.surface, borderColor: colors.hair }]}>
           <View style={styles.infoRow}>
-            <Text style={styles.infoIcon}>ℹ️</Text>
-            <Text style={styles.infoText}>
-              Running in **Simulation Mode** (Expo Go detected). Real Bluetooth pairing requires a custom development build.
+            <Text style={[styles.infoIcon, { color: colors.alert }]}>ℹ️</Text>
+            <Text style={[styles.infoText, { color: colors.t2 }]}>
+              Running in Simulation Mode (Expo Go detected). Real Bluetooth pairing requires a custom development build.
             </Text>
           </View>
-        </GlassCard>
+        </View>
       )}
 
       {scanning && (
@@ -533,7 +537,7 @@ function BLETab() {
           </View>
 
           <View style={{ marginTop: 18 }}>
-            <GlassCard>
+            <View style={[styles.customConfigCard, { backgroundColor: colors.surface, borderColor: colors.hair }]}>
               <Text style={[styles.listTitle, { color: colors.t1, marginBottom: 12 }]}>WiFi Configuration</Text>
               
               <Text style={[styles.subLabel, { color: colors.t3, marginBottom: 8 }]}>SELECT YOUR WIFI NETWORK</Text>
@@ -589,29 +593,60 @@ function BLETab() {
                 connecting && <ActivityIndicator size="small" color={colors.accent} style={{ marginVertical: 10 }} />
               )}
 
-              <InputField
-                label="WiFi Network (SSID)"
-                icon="📶"
-                placeholder="Enter WiFi name"
-                value={wifiSSID}
-                onChangeText={setWifiSSID}
-              />
-              <InputField
-                label="WiFi Password"
-                icon="🔑"
-                placeholder="Enter WiFi password"
-                value={wifiPassword}
-                onChangeText={setWifiPassword}
-                secureTextEntry
-              />
-              <GradientButton
-                title="Connect & Pair"
-                icon="🔗"
+              {/* WiFi Network Field */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.t2 }]}>WiFi Network (SSID)</Text>
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: colors.bg,
+                      borderColor: ssidFocused ? colors.accent : colors.hair,
+                      color: colors.t1,
+                    }
+                  ]}
+                  value={wifiSSID}
+                  onChangeText={setWifiSSID}
+                  placeholder="Enter WiFi name"
+                  placeholderTextColor={colors.t4}
+                  onFocus={() => setSsidFocused(true)}
+                  onBlur={() => setSsidFocused(false)}
+                />
+              </View>
+
+              {/* WiFi Password Field */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.t2 }]}>WiFi Password</Text>
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: colors.bg,
+                      borderColor: passFocused ? colors.accent : colors.hair,
+                      color: colors.t1,
+                    }
+                  ]}
+                  value={wifiPassword}
+                  onChangeText={setWifiPassword}
+                  secureTextEntry
+                  placeholder="Enter WiFi password"
+                  placeholderTextColor={colors.t4}
+                  onFocus={() => setPassFocused(true)}
+                  onBlur={() => setPassFocused(false)}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.submitButton, { backgroundColor: colors.t1, opacity: connecting ? 0.7 : 1 }]}
                 onPress={handleConnect}
-                loading={connecting}
-                colors={['#059669', '#10B981']}
-              />
-            </GlassCard>
+                disabled={connecting}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.submitButtonText, { color: colors.bg }]}>
+                  {connecting ? 'Connecting...' : 'Connect & Pair'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
@@ -740,13 +775,36 @@ async function linkDeviceByModelId(modelId: string, userId: string) {
     .maybeSingle();
 
   if (deviceError) throw new Error(deviceError.message);
-  if (!device) throw new Error(`No device found with Model ID: ${modelId}`);
+  
+  let targetDevice = device;
+
+  // If the device does not exist in the database (e.g. brand new device config), create it first
+  if (!targetDevice) {
+    const { data: newDevice, error: createError } = await db
+      .from('devices')
+      .insert({
+        model_id: modelId,
+        status: 'online',
+        last_seen: new Date().toISOString(),
+      })
+      .select('*')
+      .single();
+
+    if (createError) {
+      throw new Error(`Device registration failed: ${createError.message}`);
+    }
+    targetDevice = newDevice;
+  }
+
+  if (!targetDevice?.id) {
+    throw new Error('Failed to identify target device.');
+  }
 
   // 2. Check linked user count (max 2)
   const { data: existingLinks } = await db
     .from('user_device')
     .select('*')
-    .eq('device_id', device.id);
+    .eq('device_id', targetDevice.id);
 
   if (existingLinks && existingLinks.length >= 2) {
     throw new Error('This device already has the maximum number of linked users (2)');
@@ -763,7 +821,7 @@ async function linkDeviceByModelId(modelId: string, userId: string) {
   // 4. Create link
   const { error: linkError } = await db.from('user_device').insert({
     user_id: userId,
-    device_id: device.id,
+    device_id: targetDevice.id,
   });
 
   if (linkError) throw new Error(linkError.message);
@@ -1066,7 +1124,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 6,
     borderWidth: 1,
     marginBottom: 6,
   },
@@ -1077,5 +1135,48 @@ const styles = StyleSheet.create({
   manualText: {
     fontFamily: 'Poppins_400Regular',
     fontSize: 11,
+  },
+  infoBanner: {
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 16,
+    marginBottom: 16,
+  },
+  customConfigCard: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 20,
+    marginBottom: 16,
+  },
+  inputGroup: {
+    marginBottom: 20,
+    marginTop: 10,
+  },
+  inputLabel: {
+    fontFamily: 'Poppins_500Medium',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  textInput: {
+    height: 46,
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 16,
+    fontFamily: 'Poppins_400Regular',
+    fontSize: 14,
+  },
+  submitButton: {
+    height: 48,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  submitButtonText: {
+    fontFamily: 'Poppins_600SemiBold',
+    fontSize: 14,
   },
 });

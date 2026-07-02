@@ -69,7 +69,7 @@ export default function DashboardScreen() {
   }
 
   // ── Device paired → full dashboard ───────────────────────────────────────
-  const waterAvailable = latestEvent?.event_type === 'arrived' && (latestEvent?.water_level ?? 0) > 0;
+  const waterAvailable = latestEvent?.event_type === 'arrived';
   const statusColor = waterAvailable ? colors.accent : colors.alert;
   const statusWord = waterAvailable ? 'FLOWING' : 'STOPPED';
 
