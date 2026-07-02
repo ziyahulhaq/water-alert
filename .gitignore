@@ -1,7 +1,6 @@
 # Dependencies
 node_modules/
 
-<<<<<<< HEAD
 # Expo
 .expo/
 .expo-shared/
@@ -22,7 +21,7 @@ web-build/
 
 # Firebase config (contains API keys — do not commit)
 google-services.json
-GoogleService-Info.plist
+
 
 
 # Logs
@@ -30,7 +29,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-=======
 # Build output
 dist/
 dev-dist/
@@ -41,19 +39,16 @@ build/
 .env.local
 .env.*.local
 .env.production
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
 
 # TypeScript
 *.tsbuildinfo
 
-<<<<<<< HEAD
 # Metro / React Native
 .metro-cache/
 
 # Editors
 .vscode/
 .idea/
-=======
 # Vite
 .vite/
 
@@ -65,13 +60,11 @@ db_cleanup.sql
 logs/
 *.log
 npm-debug.log*
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
 
 # OS files
 .DS_Store
 Thumbs.db
 
-<<<<<<< HEAD
 # Package manager lockfiles not used by this project
 yarn.lock
 pnpm-lock.yaml
@@ -81,7 +74,6 @@ pnpm-lock.yaml
 
 expo-env.d.ts
 # @end expo-cli
-=======
 # Editor
 .vscode/
 .idea/
@@ -91,4 +83,3 @@ expo-env.d.ts
 # Supabase local dev (if used)
 supabase/.branches/
 supabase/.temp/
->>>>>>> fbc1833553f259af07d245522edacc529cc389fb
